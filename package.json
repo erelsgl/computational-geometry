@@ -1,0 +1,34 @@
+{
+  "name": "rectangles",
+  "description": "Functions related to squares and rectangles, such as: calculate a maximum set of non-overlapping shapes",
+  "version": "0.1.0",
+  "author": "Erel Segal-haLevi <erelsgl@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/erelsgl/rectangles.git"
+  },
+  "dependencies": {
+    "underscore": "*",
+    "argminmax": "*",
+    "seed-random": "*",
+    "js-combinatorics": "*",
+    "async": "*",
+    "jsclass": "*",
+    "jsts": "*",
+    "system": "*"
+  },
+  "devDependencies": {
+    "mocha": ">=1.0.0",
+    "should": ">=0.6.0"
+  },
+  "scripts": {
+    "test": "mocha",
+    "install": "browserify client/main.js -o client/main.bundle.js"
+  },
+  "keywords": [
+    "rectangles",
+    "optimization",
+    "geometry"
+  ],
+  "license": "LGPL"
+}

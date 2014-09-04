@@ -1,0 +1,131 @@
+<html>
+<head>
+<meta charset='utf8' />
+<script src="jsmodules/jquery-1.11.0.min.js"></script>
+<script src="jsmodules/svg.min.js"></script>
+<script src="jsmodules/svg.draggable.min.js"></script>
+<script src="jsmodules/svg.math.js"></script>
+<script src="jsmodules/svg.export.js"></script>
+<script src="jsmodules/arg.js.v1.1.min.js"></script>
+
+<script src="DraggablePoints.js"></script>
+<script src="ShapeCollection.js"></script>
+
+<script src="events.js"></script>
+
+<script type='text/javascript' src='MinSquareCovering.bundle.js'></script>
+
+<style>
+#points { width: 200px }
+#status {text-align:center; font-size:10px;}
+</style>
+
+</head>
+<body>
+
+<table><tr><td>
+	<svg id='svg' style="background:#ffe; border:dotted #ccc 3px"></svg>
+</td><td style='font-size:12px'>
+<h1>Minimum Square Covering of a Rectilinear Polygon</h1>
+<p>
+Move the points around and watch the squares covering the resulting polygon.
+</p>
+<p>
+Controls:
+<ul>
+<li>
+Add a point by clicking a color. 
+<br/>
+<button class='addpoint'>Blue</button>
+<button class='addpoint'>Cyan</button>
+<button class='addpoint'>Green</button>
+<button class='addpoint'>Yellow</button>
+<button class='addpoint'>Red</button>
+<button class='addpoint'>Pink</button>
+<button class='addpoint'>Black</button>
+</li>
+<li>Remove a point by dragging it over the left or top border.</li>
+<li>Save your configuration by copying the <a id='permalink' href=''>PermaLink</a>.</li>
+<li><button class='export'>Export</button> then right-click to save the image: <canvas id='canvas' style='width:10px;height:10px;border:solid black 1px'></canvas></li>
+<li><button class='shuffley'>Shuffle the y values</button> randomly, keeping the x values;</li>
+<li><button class='randomize'>Move all points randomly</button>;</li>
+<li>Remove all points by clicking <button class='clear'>Clear</button>.</li>
+<li><button class='interrupt'>Interrupt the current calculation.</button>.</li>
+</ul>
+
+<b>Points:</b>
+<br/>
+<textarea rows='10' cols='10' name='points' id='points'></textarea>
+
+</td>
+</tr>
+</table>
+
+<script type='text/javascript'>$(document).ready(function() {
+
+
+var setStatus = function(text) {
+	$("#status").text(text);
+}
+
+var calcMinSquareCovering = function() {
+	window.shapes.clear();
+
+	var srp = window.calcSimpleRectilinearPolygon(window.points);
+	window.shapes.add(srp, {
+		fill:'white',
+		stroke:'black',
+		opacity: 1.0,
+		'stroke-dasharray': '5,0'
+	});
+//	var squares = window.calcMinSquareCovering(srp);
+//	for (i in squares)
+//		window.shapes.add(squares[i]);
+
+	updatePermaLink();
+	setStatus(""+window.points.length+" points ; "+(window.shapes.length-1)+" squares"+"");
+}
+
+function updatePermaLink() {
+	var pointsString = window.points.toString();
+	document.getElementById('points').value = pointsString.replace(/:/g,":\n");
+	window.updatePermaLink("points="+encodeURI(pointsString));
+}
+
+$(".addpoint").click(function() {
+	var color=$(this).text().toLowerCase();
+	window.points.add({x:20,y:20}, color); 
+	window.updateStatus();
+});
+
+$(".randomize").click(function() {
+	window.points.randomize(canvas.width,canvas.height);
+});
+
+$(".shuffley").click(function() {
+	window.points.shuffleYValues();
+});
+
+$(".clear").click(function() {
+	window.points.clear(); 
+});
+
+
+
+window.points = DraggablePoints(window.svgpaper, /* change event = */calcMinSquareCovering);
+window.points.fromString(Arg("points"));
+
+window.shapes =  ShapeCollection(window.svgpaper, /*default style =*/ {
+	stroke: '#000',
+	'stroke-dasharray': '1,1',
+	opacity: 0.5,
+});
+
+
+calcMinSquareCovering();
+
+});</script>
+
+
+</body>
+</html>

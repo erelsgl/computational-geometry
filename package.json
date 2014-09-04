@@ -23,7 +23,7 @@
   },
   "scripts": {
     "test": "mocha",
-    "install": "browserify client/main.js -o client/main.bundle.js"
+    "install": "browserify client/MinSquareCovering.js -o client/MinSquareCovering.bundle.js"
   },
   "keywords": [
     "rectangles",

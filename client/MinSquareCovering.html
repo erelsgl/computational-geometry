@@ -19,6 +19,7 @@
 td {vertical-align:top}
 #points { width: 200px }
 #status {text-align:center; font-size:15px;}
+.reference {font-size:12px; font-style:italic}
 </style>
 
 </head>
@@ -29,33 +30,30 @@ td {vertical-align:top}
 <table><tr><td>
 	<svg id='svg' style="background:#ffe; border:dotted #ccc 3px"></svg>
 	<p id='status'></p>
+	<p class='reference'>Implementation based on:
+	<br/>Reuven Bar-Yehuda and Eyal Ben-Hanoch, 
+	<br/><a href='http://www.cs.technion.ac.il/~reuven/CV/ps/BarBen96.ps.gz'>A linear-time algorithm for covering simple polygons with similar rectangles</a>. 
+	<br/>International Journal of Computational Geometry & Applications (1996).
+	</p>
+	
+	
 
 </td><td style='font-size:12px'>
-<h1>Minimum Square Covering of a Rectilinear Polygon</h1>
+<h1>Minimum Square Covering</h1>
+<p>INPUT: A rectilinear polygon. Move the blue points to change the polygon.</p>
+<p>OUTPUT: A smallest set of squares whose union is the polygon.</p>
 <p>
-Move the points around and watch the squares covering the resulting polygon.
-</p>
-<p>
-Controls:
+CONTROLS:
 <ul>
-<li>
-Add a point by clicking a color. 
-<br/>
-<button class='addpoint'>Blue</button>
-<button class='addpoint'>Cyan</button>
-<button class='addpoint'>Green</button>
-<button class='addpoint'>Yellow</button>
-<button class='addpoint'>Red</button>
-<button class='addpoint'>Pink</button>
-<button class='addpoint'>Black</button>
-</li>
+<li><button class='addpoint'>Add a point</button>.</li>
 <li>Remove a point by dragging it over the left or top border.</li>
 <li>Save your configuration by copying the <a id='permalink' href=''>PermaLink</a>.</li>
 <li><button class='export'>Export</button> then right-click to save the image: <canvas id='canvas' style='width:10px;height:10px;border:solid black 1px'></canvas></li>
 <li><button class='shuffley'>Shuffle the y values</button> randomly, keeping the x values;</li>
 <li><button class='randomize'>Move all points randomly</button>;</li>
 <li>Remove all points by clicking <button class='clear'>Clear</button>.</li>
-<li><button class='interrupt'>Interrupt the current calculation.</button>.</li>
+<li><button class='interrupt'>Interrupt the current calculation</button>.</li>
+<li><input id='createCovering' name='createCovering' type='checkbox' checked='checked'/>Automatically find the minimum covering
 </ul>
 
 
@@ -85,28 +83,31 @@ var calcMinSquareCovering = function() {
 
 	updatePermaLink();
 	setStatus(""+(window.points.length*2)+" corners");
+	
+	var createCovering = $("#createCovering").prop('checked');
 
 	var srp = window.calcSimpleRectilinearPolygon(window.points);
 	window.shapes.add(srp, {
-		fill:'transparent',
+		fill: createCovering? 'transparent': 'white',
 		stroke:'black',
 		opacity: 1,
 		'stroke-dasharray': '5,0'
 	});
 	
-	var squares = window.calcMinSquareCovering(srp);
-	for (i=0; i<squares.length; ++i) {
-		var c = color(i);
-		//console.dir(squares[i])
-		window.shapes.add(squares[i], {
-			fill:c,
-			stroke:'black',
-			'stroke-dasharray': '3,3',
-			opacity:0.3,
-		});
+	if (createCovering) {
+		var squares = window.calcMinSquareCovering(srp);
+		for (i=0; i<squares.length; ++i) {
+			var c = color(i);
+			window.shapes.add(squares[i], {
+				fill:c,
+				stroke:'black',
+				'stroke-dasharray': '3,3',
+				opacity:0.3,
+			});
+		}
+		setStatus(""+(window.points.length*2)+" corners; "+squares.length+" squares"+"");
 	}
 
-	setStatus(""+(window.points.length*2)+" corners; "+squares.length+" squares"+"");
 }
 
 function updatePermaLink() {
@@ -116,7 +117,7 @@ function updatePermaLink() {
 }
 
 $(".addpoint").click(function() {
-	var color=$(this).text().toLowerCase();
+	var color="blue";//$(this).text().toLowerCase();
 	window.points.add({x:20,y:20}, color); 
 	window.updateStatus();
 });
@@ -132,6 +133,10 @@ $(".shuffley").click(function() {
 $(".clear").click(function() {
 	window.points.clear(); 
 });
+
+$("#createCovering").change(function() {
+	window.points.refresh();
+})
 
 
 

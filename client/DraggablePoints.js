@@ -96,6 +96,10 @@ function DraggablePoints(svgpaper, onDragEnd) {
 		}
 		onDragEnd();
 	}
+	
+	points.refresh = function() {
+		onDragEnd();
+	}
 
 	//remove all points from the SVG paper:
 	points.clear = function() {

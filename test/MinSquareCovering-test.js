@@ -20,11 +20,11 @@ var Right = jsts.Turn.Right;
 var Left = jsts.Turn.Left;
 
 describe('square-covering structures', function() {
-	var srp0 = new jsts.PolygonSquareCovering(new jsts.geom.SimpleRectilinearPolygon([0,0, 10,10]));  // square
-	var srp1 = new jsts.PolygonSquareCovering(new jsts.geom.SimpleRectilinearPolygon([0,0, 10,20]));  // rectangle
-	var srp2 = new jsts.PolygonSquareCovering(new jsts.geom.SimpleRectilinearPolygon([-10,0, 0,10, 10,0, 20,20])); // ח shape
-	var srp3 = new jsts.PolygonSquareCovering(new jsts.geom.SimpleRectilinearPolygon([-10,0, 0,10, 10,0, 40,20])); // elongated ח shape
-	var srp4 = new jsts.PolygonSquareCovering(new jsts.geom.SimpleRectilinearPolygon([0,0,10,10,20,20])); // L-shape
+	var srp0 = new jsts.MinSquareCovering(new jsts.geom.SimpleRectilinearPolygon([0,0, 10,10]));  // square
+	var srp1 = new jsts.MinSquareCovering(new jsts.geom.SimpleRectilinearPolygon([0,0, 10,20]));  // rectangle
+	var srp2 = new jsts.MinSquareCovering(new jsts.geom.SimpleRectilinearPolygon([-10,0, 0,10, 10,0, 20,20])); // ח shape
+	var srp3 = new jsts.MinSquareCovering(new jsts.geom.SimpleRectilinearPolygon([-10,0, 0,10, 10,0, 40,20])); // elongated ח shape
+	var srp4 = new jsts.MinSquareCovering(new jsts.geom.SimpleRectilinearPolygon([0,0,10,10,20,20])); // L-shape
 	
 	it('calculates the turn direction and convexity of corners', function() {
 		srp1.corners.pluck("turn").should.eql([Left,Left,Left,Left]);
@@ -113,7 +113,7 @@ describe('square-covering structures', function() {
 	it('removes erasable regions in rectangles', function () {
 		var srpBase = new jsts.geom.SimpleRectilinearPolygon([0,0, 10,35]);
 		
-		var srp = new jsts.PolygonSquareCovering(srpBase);
+		var srp = new jsts.MinSquareCovering(srpBase);
 		srp.corners.pluck("x").should.eql([00,10,10,00]);
 		srp.corners.pluck("y").should.eql([00,00,35,35]);
 		srp.removeErasableRegion(srp.segments.first);
@@ -126,7 +126,7 @@ describe('square-covering structures', function() {
 		srp.corners.pluck("x").should.eql([00,10,10,00]);
 		srp.corners.pluck("y").should.eql([25,25,35,35]);
 		
-		var srp = new jsts.PolygonSquareCovering(srpBase);
+		var srp = new jsts.MinSquareCovering(srpBase);
 		srp.removeErasableRegion(srp.segments.first.next.next);
 		srp.corners.pluck("x").should.eql([00,10,10,00]);
 		srp.corners.pluck("y").should.eql([00,00,25,25]);
@@ -137,7 +137,7 @@ describe('square-covering structures', function() {
 		srp.corners.pluck("x").should.eql([00,10,10,00]);
 		srp.corners.pluck("y").should.eql([00,00,10,10]);
 		
-		var srp = new jsts.PolygonSquareCovering(new jsts.geom.SimpleRectilinearPolygon([0,5, 20,20]));
+		var srp = new jsts.MinSquareCovering(new jsts.geom.SimpleRectilinearPolygon([0,5, 20,20]));
 		srp.corners.pluck("x").should.eql([00,20,20,00]);
 		srp.corners.pluck("y").should.eql([05,05,20,20]);
 		console.log("0: "+srp)
@@ -149,7 +149,7 @@ describe('square-covering structures', function() {
 	});
 
 	it('removes erasable regions in L-shapes', function () {
-		var srp = new jsts.PolygonSquareCovering(new jsts.geom.SimpleRectilinearPolygon([0,0, 10,25, 20,35]));
+		var srp = new jsts.MinSquareCovering(new jsts.geom.SimpleRectilinearPolygon([0,0, 10,25, 20,35]));
 		srp.corners.pluck("x").should.eql([0,10,10,20,20, 0]);
 		srp.corners.pluck("y").should.eql([0, 0,25,25,35,35]);
 		srp.removeErasableRegion(srp.segments.first);
@@ -162,7 +162,7 @@ describe('square-covering structures', function() {
 		srp.corners.pluck("x").should.eql([ 0,20,20, 0]);
 		srp.corners.pluck("y").should.eql([25,25,35,35]);
 
-		srp = new jsts.PolygonSquareCovering(new jsts.geom.SimpleRectilinearPolygon([10,0, 20,35, 0,25]));
+		srp = new jsts.MinSquareCovering(new jsts.geom.SimpleRectilinearPolygon([10,0, 20,35, 0,25]));
 		srp.corners.pluck("x").should.eql([10,20,20, 0, 0,10]);
 		srp.corners.pluck("y").should.eql([ 0, 0,35,35,25,25]);
 		srp.removeErasableRegion(srp.segments.first);
@@ -176,7 +176,7 @@ describe('square-covering structures', function() {
 		srp.corners.pluck("y").should.eql([25,35,35,25]);
 
 	
-		srp = new jsts.PolygonSquareCovering(new jsts.geom.SimpleRectilinearPolygon([10,0, 20,20, 0,10]));
+		srp = new jsts.MinSquareCovering(new jsts.geom.SimpleRectilinearPolygon([10,0, 20,20, 0,10]));
 		srp.corners.pluck("x").should.eql([10,20,20,00,00,10]);
 		srp.corners.pluck("y").should.eql([00,00,20,20,10,10]);
 		srp.removeErasableRegion(srp.segments.first);
@@ -189,7 +189,7 @@ describe('square-covering structures', function() {
 	});
 
 	it('removes erasable regions in T-shapes', function () {
-		var srp = new jsts.PolygonSquareCovering(new jsts.geom.SimpleRectilinearPolygon([0,10, 25,0, 35,30, 25,20]));
+		var srp = new jsts.MinSquareCovering(new jsts.geom.SimpleRectilinearPolygon([0,10, 25,0, 35,30, 25,20]));
 		srp.corners.pluck("x").should.eql([00,25,25,35,35,25,25,00]);
 		srp.corners.pluck("y").should.eql([10,10,00,00,30,30,20,20]);
 		srp.removeErasableRegion(srp.segments.last);
@@ -204,7 +204,7 @@ describe('square-covering structures', function() {
 	});
 
 	it('removes erasable regions with 3-knob continuators', function () {
-		var srp = new jsts.PolygonSquareCovering(new jsts.geom.SimpleRectilinearPolygon([0,0, 40,40, 30,50, 40,90, 0,50, 10,40]));
+		var srp = new jsts.MinSquareCovering(new jsts.geom.SimpleRectilinearPolygon([0,0, 40,40, 30,50, 40,90, 0,50, 10,40]));
 		srp.corners.pluck("x").should.eql([00,40,40,30,30,40,40,00,00,10,10,00]);
 		srp.corners.pluck("y").should.eql([00,00,40,40,50,50,90,90,50,50,40,40]);
 		srp.removeErasableRegion(srp.segments.last, 3 /* knobs */);

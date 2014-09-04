@@ -83,7 +83,7 @@ function DraggablePoints(svgpaper, onDragEnd) {
 	points.randomize = function(width, height) {
 		for (var i=0; i<this.length; ++i) {
 			var p = this[i];
-			p.move(Math.random()*width, Math.random()*height); 
+			p.move(Math.round(Math.random()*width), Math.round(Math.random()*height)); 
 		}
 		onDragEnd();
 	}
@@ -120,17 +120,12 @@ function DraggablePoints(svgpaper, onDragEnd) {
 	// Fill the points array from the given string (created by toString)
 	//     or a default (if there is no string).
 	points.fromString = function(s) {
-		if (!s || s.length<10) {
-			for (var i=1; i<=8; ++i) 
-				points.add({x:40*i,y:40*i},"blue");
-		} else {
-			var pointsStrings = s.split(/:/);
-			for (var i=0; i<pointsStrings.length; ++i) {
-				var xyc = pointsStrings[i].replace(/\s*/g,"").split(/,/);
-				if (xyc.length<2) continue;
-				if (!xyc[2] || xyc[2]=='undefined') xyc[2]="blue";
-				points.add({x:parseFloat(xyc[0]), y:parseFloat(xyc[1])}, xyc[2]);
-			}
+		var pointsStrings = s.split(/:/);
+		for (var i=0; i<pointsStrings.length; ++i) {
+			var xyc = pointsStrings[i].replace(/\s*/g,"").split(/,/);
+			if (xyc.length<2) continue;
+			if (!xyc[2] || xyc[2]=='undefined') xyc[2]="blue";
+			points.add({x:parseFloat(xyc[0]), y:parseFloat(xyc[1])}, xyc[2]);
 		}
 	}
 

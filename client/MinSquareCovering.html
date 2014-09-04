@@ -16,15 +16,20 @@
 <script type='text/javascript' src='MinSquareCovering.bundle.js'></script>
 
 <style>
+td {vertical-align:top}
 #points { width: 200px }
-#status {text-align:center; font-size:10px;}
+#status {text-align:center; font-size:15px;}
 </style>
 
 </head>
 <body>
 
+
+
 <table><tr><td>
 	<svg id='svg' style="background:#ffe; border:dotted #ccc 3px"></svg>
+	<p id='status'></p>
+
 </td><td style='font-size:12px'>
 <h1>Minimum Square Covering of a Rectilinear Polygon</h1>
 <p>
@@ -53,16 +58,23 @@ Add a point by clicking a color.
 <li><button class='interrupt'>Interrupt the current calculation.</button>.</li>
 </ul>
 
-<b>Points:</b>
-<br/>
-<textarea rows='10' cols='10' name='points' id='points'></textarea>
+
+<form method='get' action=''>
+<table>
+<tr><th>Points:</th><td><textarea rows='10' cols='10' name='points' id='points'></textarea></td></tr>
+<tr><th colspan='2'><input type='submit' /></th></tr>
+</table>
+</form>
 
 </td>
 </tr>
+
 </table>
 
 <script type='text/javascript'>$(document).ready(function() {
 
+var colors = ['#000','#f00','#0f0','#ff0','#088','#808','#880'];
+function color(i) {return colors[i % colors.length]}
 
 var setStatus = function(text) {
 	$("#status").text(text);
@@ -71,19 +83,30 @@ var setStatus = function(text) {
 var calcMinSquareCovering = function() {
 	window.shapes.clear();
 
+	updatePermaLink();
+	setStatus(""+(window.points.length*2)+" corners");
+
 	var srp = window.calcSimpleRectilinearPolygon(window.points);
 	window.shapes.add(srp, {
-		fill:'white',
+		fill:'transparent',
 		stroke:'black',
-		opacity: 1.0,
+		opacity: 1,
 		'stroke-dasharray': '5,0'
 	});
-//	var squares = window.calcMinSquareCovering(srp);
-//	for (i in squares)
-//		window.shapes.add(squares[i]);
+	
+	var squares = window.calcMinSquareCovering(srp);
+	for (i=0; i<squares.length; ++i) {
+		var c = color(i);
+		//console.dir(squares[i])
+		window.shapes.add(squares[i], {
+			fill:c,
+			stroke:'black',
+			'stroke-dasharray': '3,3',
+			opacity:0.3,
+		});
+	}
 
-	updatePermaLink();
-	setStatus(""+window.points.length+" points ; "+(window.shapes.length-1)+" squares"+"");
+	setStatus(""+(window.points.length*2)+" corners; "+squares.length+" squares"+"");
 }
 
 function updatePermaLink() {
@@ -113,7 +136,10 @@ $(".clear").click(function() {
 
 
 window.points = DraggablePoints(window.svgpaper, /* change event = */calcMinSquareCovering);
-window.points.fromString(Arg("points"));
+var pointsString = Arg("points");
+if (!pointsString)
+	pointsString = "100,100:200,200:300,300"
+window.points.fromString(pointsString);
 
 window.shapes =  ShapeCollection(window.svgpaper, /*default style =*/ {
 	stroke: '#000',

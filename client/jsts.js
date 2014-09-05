@@ -10,16 +10,6 @@ $(document).ready(function() {
 	
 /* SQUARES */
 
-function drawShapes(err, shapes) {
-	for (var i in shapes) {
-		var shape = shapes[i];
-		var style = (shape.color? {fill:shape.color, stroke:shape.color}: shape);
-		window.landplots.add(shape, style);
-	}
-	window.updateStatus();
-	$(".interrupt").attr("disabled","disabled");
-}
-
 window.calcSimpleRectilinearPolygon = function(points) {
 	var xy = [];
 	for (var i=0; i<points.length; ++i) {
@@ -32,6 +22,18 @@ window.calcSimpleRectilinearPolygon = function(points) {
 window.calcMinSquareCovering = function(srp) {
 	return jsts.algorithm.minSquareCovering(srp, factory);
 }
+
+window.calcShapesTouchingPoints = function(shapeName, points, walls) {
+	var candidates = factory.createShapesTouchingPoints(
+		shapeName, points, new jsts.geom.Envelope(walls));
+	console.dir(jsts.stringify(candidates));
+	return candidates;
+}
+window.getMaxDisjointSetSolver = function(candidates, stopAtCount) {
+	return new jsts.algorithm.MaximumDisjointSetSolver(candidates, stopAtCount);
+}
+
+
 
 }); // end of $(document).ready
 

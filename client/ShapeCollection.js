@@ -10,11 +10,13 @@ function ShapeCollection(svgpaper, defaultStyle) {
 	// Add a new shape: 
 	shapes.add = function(shape, style) {
 		if (!style)
-			style = defaultStyle;
-		else
-			for (var i in defaultStyle)
-				if (!style[i])
-					style[i] = defaultStyle[i];
+			style = {};
+		if (shape.color) 
+			style.fill = style.stroke = shape.color;
+		for (var i in defaultStyle)
+			if (!style[i])
+				style[i] = defaultStyle[i];
+		
 		var shapeOnPaper;
 		if (shape instanceof jsts.geom.AxisParallelRectangle)	{
 			shapeOnPaper = svgpaper.rect(shape.maxx-shape.minx, shape.maxy-shape.miny);

@@ -13,7 +13,7 @@
 
 <script src="events.js"></script>
 
-<script type='text/javascript' src='MinSquareCovering.bundle.js'></script>
+<script type='text/javascript' src='jsts.bundle.js'></script>
 
 <style>
 td {vertical-align:top}
@@ -42,7 +42,7 @@ td {vertical-align:top}
 
 </td><td style='width:50%; font-size:12px'>
 <h1>Minimum Square Covering</h1>
-<p>INPUT: A rectilinear polygon. Move the blue points to change the polygon.</p>
+<p>INPUT: A rectilinear polygon. Move the blue circles to change the polygon.</p>
 <p>OUTPUT: A smallest set of squares whose union is the polygon.</p>
 <p>
 CONTROLS:
@@ -73,14 +73,44 @@ CONTROLS:
 
 <script type='text/javascript'>$(document).ready(function() {
 
-var colors = ['#000','#f00','#0f0','#ff0','#088','#808','#880'];
-function color(i) {return colors[i % colors.length]}
-
 var setStatus = function(text) {
 	$("#status").text(text);
 }
 
-var calcMinSquareCovering = function() {
+var colors = ['#000','#f00','#0f0','#ff0','#088','#808','#880'];
+function color(i) {return colors[i % colors.length]}
+
+function updatePermaLink() {
+	var pointsString = window.points.toString();
+	document.getElementById('points').value = pointsString.replace(/:/g,":\n");
+	window.updatePermaLink("points="+encodeURI(pointsString));
+}
+
+$(".addpoint").click(function() {
+	var color="blue";//$(this).text().toLowerCase();
+	window.points.add({x:20,y:20}, color); 
+	setStatus(""+(window.points.length*2)+" corners");
+});
+
+$(".randomize").click(function() {
+	window.points.randomize(canvas.width,canvas.height);
+});
+
+$(".shuffley").click(function() {
+	window.points.shuffleYValues();
+});
+
+$(".clear").click(function() {
+	window.points.clear(); 
+});
+
+$("#createCovering").change(function() {
+	window.points.refresh();
+})
+
+
+
+window.points = DraggablePoints(window.svgpaper, /* change event = */function() {
 	window.shapes.clear();
 
 	updatePermaLink();
@@ -109,40 +139,8 @@ var calcMinSquareCovering = function() {
 		}
 		setStatus(""+(window.points.length*2)+" corners; "+squares.length+" squares"+"");
 	}
-
-}
-
-function updatePermaLink() {
-	var pointsString = window.points.toString();
-	document.getElementById('points').value = pointsString.replace(/:/g,":\n");
-	window.updatePermaLink("points="+encodeURI(pointsString));
-}
-
-$(".addpoint").click(function() {
-	var color="blue";//$(this).text().toLowerCase();
-	window.points.add({x:20,y:20}, color); 
-	window.updateStatus();
 });
 
-$(".randomize").click(function() {
-	window.points.randomize(canvas.width,canvas.height);
-});
-
-$(".shuffley").click(function() {
-	window.points.shuffleYValues();
-});
-
-$(".clear").click(function() {
-	window.points.clear(); 
-});
-
-$("#createCovering").change(function() {
-	window.points.refresh();
-})
-
-
-
-window.points = DraggablePoints(window.svgpaper, /* change event = */calcMinSquareCovering);
 var pointsString = Arg("points");
 if (!pointsString)
 	pointsString = "100,100:200,200:300,300"
@@ -155,7 +153,7 @@ window.shapes =  ShapeCollection(window.svgpaper, /*default style =*/ {
 });
 
 
-calcMinSquareCovering();
+window.points.refresh();
 
 });</script>
 

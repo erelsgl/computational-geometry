@@ -24,3 +24,13 @@ Examples
     // Find the minimum square covering:
     var covering = jsts.algorithm.minSquareCovering(srp);
     console.dir(covering);
+
+    // Create a set of squares spanned by points:
+    var squares = jsts.algorithm....
+    
+    
+    // Find a  maximum disjoint set of squares:
+    var disjointset = jsts.algorithm...
+    
+    
+   

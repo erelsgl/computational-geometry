@@ -16,11 +16,7 @@
 
 <script type='text/javascript' src='jsts.bundle.js'></script>
 
-<style>
-#walls, #points { width: 200px }
-td {vertical-align:top}
-#status {text-align:center; font-size:10px;}
-</style>
+<link rel='stylesheet' href='style.css' />
 
 </head>
 <body>
@@ -36,7 +32,19 @@ td {vertical-align:top}
 	<td style='vertical-align:middle'><input class='wall' id='wall-right' type='checkbox'/></td>
 </tr>
 <tr><td colspan='3' style='text-align:center'><input class='wall' id='wall-bottom' type='checkbox'/></td></tr>
-<tr><td colspan='3' id='status'></td></tr>
+<tr><td colspan='3'>
+
+	<p id='status'></p>
+	<div class='reference'>
+	<h2>References</h2>
+	<ul>
+	<li>Wikipedia, <a href='https://en.wikipedia.org/wiki/Maximum_disjoint_set'>Maximum disjoint set</a>.</li>
+	</ul>
+	</div>
+
+</td></tr>
+
+
 </table>
 
 </td><td style='font-size:12px'>

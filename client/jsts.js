@@ -29,10 +29,18 @@ window.calcShapesTouchingPoints = function(shapeName, points, walls) {
 	console.dir(jsts.stringify(candidates));
 	return candidates;
 }
+
+window.calcMaxDisjointSet = function(candidates, stopAtCount) {
+	return jsts.algorithm.maximumDisjointSet(candidates, stopAtCount);
+}
+
 window.getMaxDisjointSetSolver = function(candidates, stopAtCount) {
 	return new jsts.algorithm.MaximumDisjointSetSolver(candidates, stopAtCount);
 }
 
+window.calcRepresentativeDisjointSet = function(candidateSets) {
+	return jsts.algorithm.representativeDisjointSet	(candidateSets)
+}
 
 
 }); // end of $(document).ready

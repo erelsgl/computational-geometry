@@ -82,7 +82,7 @@ Add a point by clicking a color. It is recommended to add no more than <span id=
 	<option value='drawAll'>All candidates</option>
 	<option value='drawRepresentatives'>Disjoint representatives</option>
 	<option value='drawAllRepresentatives'>All representatives</option>
-	<option value='drawFairDivision'>Half-Proportional Division</option>
+	<!-- option value='drawFairDivision'>Half-Proportional Division</option -->
 	<option value='drawNone'>Draw nothing</option>
 </select> <input id='numPerColor' name='numPerColor' class='control' size='2' value='1' />
 </td></tr>
@@ -153,14 +153,14 @@ function drawShapesAndUpdateLink() {
 			if (drawMode=="drawRepresentatives") {
 				var newStatus = "";
 				for (var color in window.points.byColor) {
-					var maxDisjointSetOfColor = jsts.algorithm.maximumDisjointSet(candidatesByColor[color], candidateSets.length);
+					var maxDisjointSetOfColor = window.calcMaxDisjointSet(candidatesByColor[color], candidateSets.length);
 					newStatus += color+":"+window.points.byColor[color].length+"p"+maxDisjointSetOfColor.length+"s ";
 					for (var i in maxDisjointSetOfColor) {
 						var shape = maxDisjointSetOfColor[i];
 						window.landplots.add(shape, {stroke: shape.color, fill: 'transparent'});
 					}
 				}
-				var shapes = jsts.algorithm.representativeDisjointSet(candidateSets);
+				var shapes = window.calcRepresentativeDisjointSet(candidateSets);
 				newStatus += "   representatives:"+shapes.length;
 				drawShapes(null, shapes);
 				setStatus(newStatus);

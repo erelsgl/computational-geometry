@@ -86,12 +86,12 @@ Add a point by clicking a color. It is recommended to add no more than <span id=
 <input class='control' name='maxSlimness' id='maxSlimness' size='1' value='1' style='width:2em'/>-fat
 </td></tr>
 <tr><th>Drawing:</th><td>: <select id='draw' name='draw' class='control'>
-	<option value='drawDisjoint' selected='selected'>Max set of disjoint candidates</option>
 	<option value='drawAll'>All candidates</option>
-	<option value='drawRepresentatives'>Disjoint representatives</option>
+	<option value='drawDisjoint' selected='selected'>Max set of disjoint candidates</option>
+	<!-- option value='drawRepresentatives'>Disjoint representatives</option>
 	<option value='drawAllRepresentatives'>All representatives</option>
 	<!-- option value='drawFairDivision'>Half-Proportional Division</option -->
-	<option value='drawNone'>Draw nothing</option>
+	<option value='drawNone'>Nothing</option>
 </select> <input id='numPerColor' name='numPerColor' class='control' size='2' value='1' />
 </td></tr>
 <tr><th>Walls:</th><td><input id='walls' name='walls' value='' /></td></tr>
@@ -120,7 +120,6 @@ window.svgpaper.line(0,0, 400,400).stroke({ width: 1, color:'#ccc' });
 window.svgpaper.line(0,400, 400,0).stroke({ width: 1, color:'#ccc' });
 
 function drawShapes(err, shapes) { // A callback for the asynchronous solver
-	console.dir(shapes)
 	for (var i=0; i<shapes.length; ++i)
 		window.landplots.add(shapes[i]);
 	setStatus(""+window.points.length+" points ; "+window.landplots.length+" shapes"+"");
@@ -235,8 +234,8 @@ window.landplots =  ShapeCollection(window.svgpaper, /*default style =*/ {
 
 window.points = DraggablePoints(window.svgpaper, /* change event = */drawShapesAndUpdateLink);
 
-window.points.fromString(Arg("points"));
-wallsFromString(Arg("walls"));
+window.points.fromString(Arg("points")||"50,50:100,100:150,150:200,200:250,250:300,300:350,350");
+wallsFromString(Arg("walls")||"1,1,1,1");
 if (Arg("draw")) $("#draw").val(Arg("draw"));
 if (Arg("shape")) $("#shape").val(Arg("shape"));
 

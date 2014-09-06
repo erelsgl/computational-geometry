@@ -25,9 +25,10 @@ window.calcMinSquareCovering = function(srp) {
 }
 
 window.calcShapesTouchingPoints = function(shapeName, points, walls) {
+//	console.dir(walls)
 	var candidates = factory.createShapesTouchingPoints(
-		shapeName, points, new jsts.geom.Envelope(walls));
-	console.dir(jsts.stringify(candidates));
+		shapeName, points, new jsts.geom.Envelope(walls.minx,walls.maxx, walls.miny,walls.maxy));
+//	console.dir(jsts.stringify(candidates));
 	return candidates;
 }
 
@@ -1828,12 +1829,19 @@ function partitionDescription(partition) {
  * @since 2014-01
  */
 
+var jsts = require("jsts");
 require("./factory-utils");
 require("./AxisParallelRectangle");
+
 
 function coord(x,y)  {  return new jsts.geom.Coordinate(x,y); }
 
 var DEFAULT_ENVELOPE = new jsts.geom.Envelope(-Infinity,Infinity, -Infinity,Infinity);
+
+jsts.geom.Envelope.prototype.checkValid = function() {
+	if (this.maxx<this.minx) throw new Error("maxx<minx: "+JSON.stringify(this));
+	if (this.maxy<this.miny) throw new Error("maxy<miny: "+JSON.stringify(this));
+}
 
 	
 /**
@@ -1848,6 +1856,7 @@ var DEFAULT_ENVELOPE = new jsts.geom.Envelope(-Infinity,Infinity, -Infinity,Infi
  * b. No shape contains a point.
  */
 jsts.geom.GeometryFactory.prototype.createShapesTouchingPoints = function(shapeName, points, envelope) {
+	envelope.checkValid();
 	var shapes = (
 			shapeName==="rotatedSquares"? this.createRotatedSquaresTouchingPoints(points, envelope):
 			shapeName==="RAITs"? this.createRAITsTouchingPoints(points, envelope):
@@ -2017,7 +2026,7 @@ function colorByGroupId(shapes) {
 	});
 	return shapes;
 }
-},{"./AxisParallelRectangle":2,"./factory-utils":10}],16:[function(require,module,exports){
+},{"./AxisParallelRectangle":2,"./factory-utils":10,"jsts":27}],16:[function(require,module,exports){
 var process=require("__browserify_process");/*!
  * async
  * https://github.com/caolan/async

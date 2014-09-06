@@ -24,9 +24,10 @@ window.calcMinSquareCovering = function(srp) {
 }
 
 window.calcShapesTouchingPoints = function(shapeName, points, walls) {
+//	console.dir(walls)
 	var candidates = factory.createShapesTouchingPoints(
-		shapeName, points, new jsts.geom.Envelope(walls));
-	console.dir(jsts.stringify(candidates));
+		shapeName, points, new jsts.geom.Envelope(walls.minx,walls.maxx, walls.miny,walls.maxy));
+//	console.dir(jsts.stringify(candidates));
 	return candidates;
 }
 

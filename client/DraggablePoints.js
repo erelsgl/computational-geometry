@@ -33,11 +33,14 @@ function DraggablePoints(svgpaper, onDragEnd) {
 		};
 
 		point.drawOnPaper();
-
-		point.remove = function() {
+		
+		point.removeFromPaper = function() {
 			this.circle.remove();
 			delete this.circle;
-			
+		}
+
+		point.remove = function() {
+			this.removeFromPaper();
 			var index = points.indexOf(this);
 			if (index>=0)
 				points.splice(index,1);
@@ -75,9 +78,9 @@ function DraggablePoints(svgpaper, onDragEnd) {
 	// Re-draw all the points
 	points.redraw = function() {
 		for (var p=0; p<this.length; ++p)
-			this[p].draw(); // remove
+			this[p].removeFromPaper();
 		for (var p=0; p<this.length; ++p)
-			this[p].drawOnPaper(); // draw again
+			this[p].drawOnPaper();
 	}
 	
 	points.randomize = function(width, height) {
@@ -104,7 +107,7 @@ function DraggablePoints(svgpaper, onDragEnd) {
 	//remove all points from the SVG paper:
 	points.clear = function() {
 		for (var p=0; p<this.length; ++p)
-			this[p].draw();
+			this[p].removeFromPaper();
 		this.length = 0;
 		this.byColor = {};
 		onDragEnd();

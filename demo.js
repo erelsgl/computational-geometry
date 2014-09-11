@@ -9,6 +9,10 @@ var covering = jsts.algorithm.minSquareCovering(srp);
 console.log("A minimum square-covering:")
 console.dir(covering);
 
-var squares = factory.createSquaresTouchingPoints([{x:1,y:1}, {x:2,y:1}]);
-console.log("A collection of squares spanned by points:")
+var squares = factory.createSquaresTouchingPoints([{x:1,y:1}, {x:2,y:1}, {x:1,y:2}]);
+console.log("A collection of "+squares.length+" squares spanned by points:")
 console.dir(squares);
+
+var disjointset = jsts.algorithm.maximumDisjointSet(squares);
+console.log("A maximum disjoint set of "+disjointset.length+" squares:");
+console.dir(disjointset);

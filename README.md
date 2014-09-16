@@ -33,6 +33,16 @@ Examples
 	var disjointset = jsts.algorithm.maximumDisjointSet(squares);
 	console.log("A maximum disjoint set of "+disjointset.length+" squares:");
 	console.dir(disjointset);
+
+
+Status
+------
+The algorithms work in many cases but they are NOT fully tested. See the test/ folder
+for the cases that do work.
     
     
+Demo
+----
+Some half-working web demos are available at [http://tora.us.fm/geometry](http://tora.us.fm/geometry).
+
    

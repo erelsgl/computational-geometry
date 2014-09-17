@@ -61,4 +61,8 @@ describe('minimal square-covering of ', function() {
 	it('1-knobs', function () {  // tests the third type of a 1-knob
 		minSquareCoveringTest([0,0, 5,6, 4,8, 1,7]).should.eql([ { minx: 0, maxx: 5, miny: 0, maxy: 5 }, { minx: 0, maxx: 5, miny: 1, maxy: 6 }, { minx: 0, maxx: 4, miny: 3, maxy: 7 }, { minx: 1, maxx: 4, miny: 5, maxy: 8 } ]); // Fat L-shape: 3 overlapping squares
 	});
+
+	it.only('overlapping squares', function () { 
+		minSquareCoveringTest([0,0, 10,1, 11,11, 1,10]).should.eql([ { minx: 0, maxx: 10, miny: 0, maxy: 10}, { minx: 1, maxx: 11, miny: 1, maxy: 11}]); // 2 overlapping squares
+	});
 });

@@ -138,9 +138,9 @@ describe('square-covering structures', function() {
 		var srp = new jsts.algorithm.MinSquareCoveringData(new jsts.geom.SimpleRectilinearPolygon([0,5, 20,20], factory));
 		srp.corners.pluck("x").should.eql([00,20,20,00]);
 		srp.corners.pluck("y").should.eql([05,05,20,20]);
-		console.log("0: "+srp)
+//		console.log("0: "+srp)
 		srp.removeErasableRegion(srp.segments.first.next);
-		console.log("1: "+srp)
+//		console.log("1: "+srp)
 		srp.corners.pluck("x").should.eql([00,15,15,00]);
 		srp.corners.pluck("y").should.eql([05,05,20,20]);
 		

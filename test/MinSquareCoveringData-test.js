@@ -25,6 +25,7 @@ describe('square-covering structures', function() {
 	var srp2 = new jsts.algorithm.MinSquareCoveringData(factory.createSimpleRectilinearPolygon([-10,0, 0,10, 10,0, 20,20])); // ח shape
 	var srp3 = new jsts.algorithm.MinSquareCoveringData(factory.createSimpleRectilinearPolygon([-10,0, 0,10, 10,0, 40,20])); // elongated ח shape
 	var srp4 = new jsts.algorithm.MinSquareCoveringData(factory.createSimpleRectilinearPolygon([0,0,10,10,20,20])); // L-shape
+	var srp5 = new jsts.algorithm.MinSquareCoveringData(factory.createSimpleRectilinearPolygon([0,10, 20,0])); // L-shape
 	
 	it('calculates the convexity of corners', function() {
 		srp1.corners.pluck("isConvex").should.eql([true,true,true,true]);

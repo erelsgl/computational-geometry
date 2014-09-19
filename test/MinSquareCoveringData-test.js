@@ -107,6 +107,14 @@ describe('square-covering structures', function() {
 		segment=segment.next;  segment.distanceToNearestBorder().should.equal(10);
 		segment=segment.next;  segment.distanceToNearestBorder().should.equal(10);
 	})
+	
+	it('finds continuators', function() {
+		var srp = new jsts.algorithm.MinSquareCoveringData(factory.createSimpleRectilinearPolygon([10,10, 30,30, 15,25]));  // L-shape
+		srp.findContinuatorSegment().length().should.equal(15);
+		
+		var srp = new jsts.algorithm.MinSquareCoveringData(factory.createSimpleRectilinearPolygon([0,0, 20,20, 0,15, 15,5]));  // U-shape
+		srp.findContinuatorSegment().length().should.equal(5);
+	})
 
 	it('removes erasable regions in rectangles', function () {
 		var srpBase = new jsts.geom.SimpleRectilinearPolygon([0,0, 10,35], factory);

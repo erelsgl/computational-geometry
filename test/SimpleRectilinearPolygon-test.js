@@ -46,7 +46,49 @@ describe('SimpleRectilinearPolygon', function() {
 		srp2.contains(point2).should.equal(false); // boundary not contained
 		point3.within(srp2).should.equal(true);
 		point4.within(srp2).should.equal(false);
-		
 	})
 });
+
+
+describe('SimpleRectilinearPolygon removeRectangle', function() {
+	var land = factory.createSimpleRectilinearPolygon([{x:0,y:0},{x:0,y:10},{x:10,y:10},{x:10,y:0},{x:0,y:0}]);
+	it('SW corner', function() {
+		land.removeRectangle({minx:0,miny:0, maxx:2,maxy:3}).points.should.eql([{x:0,y:10},{x:10,y:10},{x:10,y:0},{x:2,y:0},{x:2,y:3},{x:0,y:3},{x:0,y:10}]);
+	});
+	it('west wall', function() {
+		land.removeRectangle({minx:0,miny:1, maxx:2,maxy:3}).points.should.eql([{x:0,y:0},{x:0,y:1},{x:2,y:1},{x:2,y:3},{x:0,y:3},{x:0,y:10},{x:10,y:10},{x:10,y:0},{x:0,y:0}]);
+	});
+	it('entire west wall', function() {
+		land.removeRectangle({minx:0,miny:0, maxx:2,maxy:10}).points.should.eql([{x:10,y:10},{x:10,y:0},{y:0,x:2},{y:10,x:2},{x:10,y:10}]);
+	});
+	it('NW corner', function() {
+		land.removeRectangle({minx:0,miny:1, maxx:2,maxy:10}).points.should.eql([{x:0,y:0},{x:0,y:1},{x:2,y:1},{x:2,y:10},{x:10,y:10},{x:10,y:0},{x:0,y:0}]);
+	});
+	it('north wall', function() {
+		land.removeRectangle({minx:1,miny:1, maxx:9,maxy:10}).points.should.eql([{x:0,y:0},{x:0,y:10},{x:1,y:10},{x:1,y:1},{x:9,y:1},{x:9,y:10},{x:10,y:10},{x:10,y:0},{x:0,y:0}]);
+	});
+	it('entire north wall', function() {
+		land.removeRectangle({minx:0,miny:1, maxx:10,maxy:10}).points.should.eql([{x:0,y:0},{x:0,y:1},{x:10,y:1},{x:10,y:0},{x:0,y:0}]);
+	});
+	it('NE corner', function() {
+		land.removeRectangle({minx:1,miny:1, maxx:10,maxy:10}).points.should.eql([{x:0,y:0},{x:0,y:10},{x:1,y:10},{x:1,y:1},{x:10,y:1},{x:10,y:0},{x:0,y:0}]);
+	});
+	it('east wall', function() {
+		land.removeRectangle({minx:1,miny:1, maxx:10,maxy:9}).points.should.eql([{x:0,y:0},{x:0,y:10},{x:10,y:10},{x:10,y:9},{x:1,y:9},{x:1,y:1},{x:10,y:1},{x:10,y:0},{x:0,y:0}]);
+	});
+	it('entire east wall', function() {
+		land.removeRectangle({minx:1,miny:0, maxx:10,maxy:10}).points.should.eql([{x:0,y:0},{x:0,y:10},{y:10,x:1},{y:0,x:1},{x:0,y:0}]);
+	});
+	it('SE corner', function() {
+		land.removeRectangle({minx:1,miny:0, maxx:10,maxy:3}).points.should.eql([{x:0,y:0},{x:0,y:10},{x:10,y:10},{x:10,y:3},{x:1,y:3},{x:1,y:0},{x:0,y:0}]);
+	});
+	it('south wall', function() {
+		land.removeRectangle({minx:1,miny:0, maxx:8,maxy:3}).points.should.eql([{x:0,y:0},{x:0,y:10},{x:10,y:10},{x:10,y:0},{x:8,y:0},{x:8,y:3},{x:1,y:3},{x:1,y:0},{x:0,y:0}]);
+	});
+	it('entire south wall', function() {
+		land.removeRectangle({minx:0,miny:0, maxx:10,maxy:3}).points.should.eql([{x:0,y:10},{x:10,y:10},{x:10,y:3},{x:0,y:3},{x:0,y:10}]);
+	});
+});
+
+
 

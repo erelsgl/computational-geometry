@@ -50,7 +50,7 @@ describe('SimpleRectilinearPolygon', function() {
 });
 
 
-describe('SimpleRectilinearPolygon removeRectangle', function() {
+describe('SimpleRectilinearPolygon removeRectangle from a square', function() {
 	var land = factory.createSimpleRectilinearPolygon([{x:0,y:0},{x:0,y:10},{x:10,y:10},{x:10,y:0},{x:0,y:0}]);
 	it('SW corner', function() {
 		land.removeRectangle({minx:0,miny:0, maxx:2,maxy:3}).points.should.eql([{x:0,y:10},{x:10,y:10},{x:10,y:0},{x:2,y:0},{x:2,y:3},{x:0,y:3},{x:0,y:10}]);
@@ -89,6 +89,31 @@ describe('SimpleRectilinearPolygon removeRectangle', function() {
 		land.removeRectangle({minx:0,miny:0, maxx:10,maxy:3}).points.should.eql([{x:0,y:10},{x:10,y:10},{x:10,y:3},{x:0,y:3},{x:0,y:10}]);
 	});
 });
+
+
+
+describe('SimpleRectilinearPolygon removeRectangle from an L-shape', function() {
+	var land = factory.createSimpleRectilinearPolygon([0,0, 18,2, 20,20]);
+	it('L-shape becomes rectangle', function() {
+		land.removeRectangle({minx:0,miny:0, maxx:18,maxy:2}).points.should.eql([{x:20,y:2},{x:20,y:20},{x:0,y:20},{x:0,y:2},{x:20,y:2}]);
+	});
+	it('L-shape remains L-shape', function() {
+		land.removeRectangle({minx:0,miny:0, maxx:18,maxy:1}).points.should.eql([{x:18,y:2},{x:20,y:2},{x:20,y:20},{x:0,y:20},{x:0,y:1},{x:18,y:1},{x:18,y:2}]);
+	});
+	
+	var land2 = factory.createSimpleRectilinearPolygon([0,69, 31,100, 100,0]);
+	it('L-shape becomes U-shape', function() {
+		land2.removeRectangle({minx:31,miny:66, maxx:65,maxy:100}).points.should.eql(
+				[{x:0,y:69},{x:31,y:69},{x:31,y:66},{x:65,y:66},{x:65,y:100},{x:100,y:100},{x:100,y:0},{x:0,y:0},{x:0,y:69}]);
+	});
+	
+	var land3 = factory.createSimpleRectilinearPolygon([0,68, 32,100, 100,0]);
+	it('L-shape remains L-shape 2', function() {
+		land3.removeRectangle({minx:32,miny:68, maxx:64,maxy:100}).points.should.eql(
+				[{x:0,y:68},{x:64,y:68},{x:64,y:100},{x:100,y:100},{x:100,y:0},{x:0,y:0},{x:0,y:68}]);
+	});
+});
+
 
 
 

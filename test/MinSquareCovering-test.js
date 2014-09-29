@@ -88,8 +88,9 @@ describe('minimal square-covering of ', function() {
 	it('hall with 4 rooms', function () { 
 		minSquareCoveringTest([0,0,4,1,12,0, 16,4,15,12,16,16, 12,15,4,16,0,12, 1,4]).should.eql([{ minx: 0, maxx: 4, miny: 0, maxy: 4}, { minx: 0, maxx: 4, miny: 12, maxy: 16}, { minx: 1, maxx: 15, miny: 1, maxy: 15}, { minx: 12, maxx: 16, miny: 0, maxy: 4}, { minx: 12, maxx: 16, miny: 12, maxy: 16}]); // 5 overlapping squares: 4 small, 1 large
 	});
-
-//	it.only('road with 2 turns', function () { 
-//		minSquareCoveringTest([0,0,4,1,12,0, 16,4,15,12,16,16, 12,15,4,16,0,12, 1,4]).should.eql([{ minx: 0, maxx: 4, miny: 0, maxy: 4}, { minx: 0, maxx: 4, miny: 12, maxy: 16}, { minx: 1, maxx: 15, miny: 1, maxy: 15}, { minx: 12, maxx: 16, miny: 0, maxy: 4}, { minx: 12, maxx: 16, miny: 12, maxy: 16}]); // 5 overlapping squares: 4 small, 1 large
-//	});
+	
+	it('random', function() {
+//		minSquareCoveringTest([0,100, 91,91, 100,0, 25,25]).length.should.equal(4)
+		minSquareCoveringTest([0,1, 0.9075,0.9075, 1,0, 0.2475,0.2475]).length.should.equal(4)
+	})
 });

@@ -15,15 +15,15 @@
     "async": "*",
     "jsclass": "*",
     "jsts": "*",
-    "system": "*"
+    "system": "*",
+    "almost-equal": "*"
   },
   "devDependencies": {
     "mocha": ">=1.0.0",
     "should": ">=0.6.0"
   },
   "scripts": {
-    "test": "mocha",
-    "install": "browserify client/jsts.js -o client/jsts.bundle.js"
+    "test": "mocha"
   },
   "keywords": [
     "rectangles",

@@ -88,6 +88,10 @@ describe('SimpleRectilinearPolygon removeRectangle from a square', function() {
 	it('entire south wall', function() {
 		land.removeRectangle({minx:0,miny:0, maxx:10,maxy:3}).points.should.eql([{x:0,y:10},{x:10,y:10},{x:10,y:3},{x:0,y:3},{x:0,y:10}]);
 	});
+	
+	it('result is not simply-connected', function() {
+		(function() {land.removeRectangle({minx:4,miny:4, maxx:6,maxy:6})}).should.throw();
+	})
 });
 
 
@@ -112,6 +116,15 @@ describe('SimpleRectilinearPolygon removeRectangle from an L-shape', function() 
 		land3.removeRectangle({minx:32,miny:68, maxx:64,maxy:100}).points.should.eql(
 				[{x:0,y:68},{x:64,y:68},{x:64,y:100},{x:100,y:100},{x:100,y:0},{x:0,y:0},{x:0,y:68}]);
 	});
+
+	it('result is not simply-connected A', function() {
+		(function() {land3.removeRectangle({minx:50,miny:30, maxx:60,maxy:40})}).should.throw();
+
+	})
+	it('result is not simply-connected B', function() {
+		var land4 = factory.createSimpleRectilinearPolygon([0,0, 20,10, 30,30]);
+		(function() {land4.removeRectangle({"minx":18,"maxx":20,"miny":18,"maxy":20})}).should.throw();
+	})
 });
 
 

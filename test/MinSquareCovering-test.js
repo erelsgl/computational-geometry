@@ -96,4 +96,8 @@ describe('minimal square-covering of ', function() {
 	it('floating point numbers B', function() {
 		minSquareCoveringTest([0,1, 1,0.33499999999999996, 0.665,0, 0.465,0.195, 0.27,0.27]).length.should.equal(5)
 	})
+	
+	it('floating point numbers C', function() {
+		minSquareCoveringTest([0,1, 1,0.575, 0.7000000000000001,0.275, 0.725,0.185, 0.54,0]).length.should.equal(5)
+	})
 });

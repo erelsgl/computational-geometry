@@ -51,6 +51,7 @@ describe('SimpleRectilinearPolygon', function() {
 
 
 describe('SimpleRectilinearPolygon removeRectangle from a square', function() {
+	jsts.geom.SimpleRectilinearPolygon.FORCE_FIRST_SEGMENT_HORIZONTAL = false;
 	var land = factory.createSimpleRectilinearPolygon([{x:0,y:0},{x:0,y:10},{x:10,y:10},{x:10,y:0},{x:0,y:0}]);
 	it('SW corner', function() {
 		land.removeRectangle({minx:0,miny:0, maxx:2,maxy:3}).points.should.eql([{x:0,y:10},{x:10,y:10},{x:10,y:0},{x:2,y:0},{x:2,y:3},{x:0,y:3},{x:0,y:10}]);

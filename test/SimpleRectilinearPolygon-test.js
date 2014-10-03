@@ -112,33 +112,49 @@ describe('SimpleRectilinearPolygon removeRectangle from a square', function() {
 
 
 describe('SimpleRectilinearPolygon removeRectangle from an L-shape', function() {
-	var land = factory.createSimpleRectilinearPolygon([0,0, 18,2, 20,20]);
 	it('L-shape becomes rectangle', function() {
+		var land = factory.createSimpleRectilinearPolygon([0,0, 18,2, 20,20]);
 		land.removeRectangle({minx:0,miny:0, maxx:18,maxy:2}).points.should.eql([{x:20,y:2},{x:20,y:20},{x:0,y:20},{x:0,y:2},{x:20,y:2}]);
 	});
 	it('L-shape remains L-shape', function() {
+		var land = factory.createSimpleRectilinearPolygon([0,0, 18,2, 20,20]);
 		land.removeRectangle({minx:0,miny:0, maxx:18,maxy:1}).points.should.eql([{x:18,y:2},{x:20,y:2},{x:20,y:20},{x:0,y:20},{x:0,y:1},{x:18,y:1},{x:18,y:2}]);
 	});
 	
-	var land2 = factory.createSimpleRectilinearPolygon([0,69, 31,100, 100,0]);
 	it('L-shape becomes U-shape', function() {
+		var land2 = factory.createSimpleRectilinearPolygon([0,69, 31,100, 100,0]);
 		land2.removeRectangle({minx:31,miny:66, maxx:65,maxy:100}).points.should.eql(
 				[{x:0,y:69},{x:31,y:69},{x:31,y:66},{x:65,y:66},{x:65,y:100},{x:100,y:100},{x:100,y:0},{x:0,y:0},{x:0,y:69}]);
 	});
 	
-	var land3 = factory.createSimpleRectilinearPolygon([0,68, 32,100, 100,0]);
 	it('L-shape remains L-shape 2', function() {
+		var land3 = factory.createSimpleRectilinearPolygon([0,68, 32,100, 100,0]);
 		land3.removeRectangle({minx:32,miny:68, maxx:64,maxy:100}).points.should.eql(
 				[{x:0,y:68},{x:64,y:68},{x:64,y:100},{x:100,y:100},{x:100,y:0},{x:0,y:0},{x:0,y:68}]);
 	});
 
 	it('result is not simply-connected A', function() {
-		(function() {land3.removeRectangle({minx:50,miny:30, maxx:60,maxy:40})}).should.throw();
+		var land3 = factory.createSimpleRectilinearPolygon([0,68, 32,100, 100,0]);
+		(function() {land3.removeRectangle({minx:50,miny:30, maxx:60,maxy:40})}).should.throw(/not adjacent to border/);
 
 	})
 	it('result is not simply-connected B', function() {
 		var land4 = factory.createSimpleRectilinearPolygon([0,0, 20,10, 30,30]);
-		(function() {land4.removeRectangle({"minx":18,"maxx":20,"miny":18,"maxy":20})}).should.throw();
+		(function() {land4.removeRectangle({minx:18,maxx:20, miny:18,maxy:20})}).should.throw(/not adjacent to border/);
 	})
+	
+	it('result is not connected A', function() {
+		var land5 = factory.createSimpleRectilinearPolygon([0,0, 20,20, 60,60]);
+		(function() {land5.removeRectangle({minx:0,maxx:30, miny:20,maxy:50})}).should.throw(/disconnected/);
+	})
+	
+	it('result is not connected B', function() {
+		var land6 = factory.createSimpleRectilinearPolygon([0,1, 1,0.20750000000000002, 0.7925,0.2475, 0.5449999999999999,0]);
+		(function() {land6.removeRectangle({"minx":0.7150000000000001,"miny":0.2475,"maxx":1,"maxy":0.5325})}).should.throw(/disconnected/);
+	})
+});
+
+
+describe('SimpleRectilinearPolygon removeRectangle from complex shapes', function() {
 });
 

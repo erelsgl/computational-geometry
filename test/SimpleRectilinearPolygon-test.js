@@ -47,6 +47,20 @@ describe('SimpleRectilinearPolygon', function() {
 		point3.within(srp2).should.equal(true);
 		point4.within(srp2).should.equal(false);
 	})
+	
+	it ('detects self-intersections', function() {
+		srp0.selfIntersectionPoints().length.should.equal(0);
+		srp1.selfIntersectionPoints().length.should.equal(0);
+		srp2.selfIntersectionPoints().length.should.equal(0);
+		srp3.selfIntersectionPoints().length.should.equal(0);
+		srp4.selfIntersectionPoints().length.should.equal(0);
+
+		srp8 = factory.createSimpleRectilinearPolygon([0,0,10,20,20,10]);
+		srp8.selfIntersectionPoints().should.eql([[10,10]]);
+		
+		srpx = factory.createSimpleRectilinearPolygon([0,1, 1,0.5325, 0.7150000000000001,0.2475, 1,0.20750000000000002, 0.7925,0.2475, 1,0.5325, 0.7150000000000001,0.2475, 0.5449999999999999,0]);
+		srpx.selfIntersectionPoints().length.should.equal(1);
+	})
 });
 
 
@@ -127,7 +141,4 @@ describe('SimpleRectilinearPolygon removeRectangle from an L-shape', function() 
 		(function() {land4.removeRectangle({"minx":18,"maxx":20,"miny":18,"maxy":20})}).should.throw();
 	})
 });
-
-
-
 

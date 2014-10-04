@@ -236,6 +236,12 @@ describe('square-covering structures', function() {
 		srp4.findSegmentWithContinuator().knobCount.should.equal(1);
 	})
 
+	it('finds all continuator segments', function() {
+		srp0.findAllSegmentsWithContinuators().length.should.equal(1);
+		srp1.findAllSegmentsWithContinuators().length.should.equal(2);
+		srp4.findAllSegmentsWithContinuators().length.should.equal(2);
+	})
+
 
 	it('finds continuators', function() {
 		var segment;

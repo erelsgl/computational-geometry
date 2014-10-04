@@ -132,6 +132,13 @@ describe('square-covering structures', function() {
 		srp.corners.pluck("x").should.eql([00,10,10,00]);
 		srp.corners.pluck("y").should.eql([25,25,35,35]);
 		
+		srp.getResidualPolygon().getCoordinates().should.eql(
+				[ { x:  0, y: 25 },
+				  { x: 10, y: 25 },
+				  { x: 10, y: 35 },
+				  { x:  0, y: 35 },
+				  { x:  0, y: 25 } ]);
+		
 		var srp = new jsts.algorithm.MinSquareCoveringData(srpBase);
 		srp.removeErasableRegion(srp.segments.first.next.next);
 		srp.corners.pluck("x").should.eql([00,10,10,00]);

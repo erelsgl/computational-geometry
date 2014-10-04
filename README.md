@@ -15,7 +15,7 @@ Installation
 Examples
 --------
 
-	var jsts = require("../computational-geometry");
+	var jsts = require("../computational-geometry"); // contains all JSTS functionality in addition to new algorithms
 	var factory = new jsts.geom.GeometryFactory();
 	
 	var srp = new jsts.geom.SimpleRectilinearPolygon([0,0, 10,10, 20,20]);

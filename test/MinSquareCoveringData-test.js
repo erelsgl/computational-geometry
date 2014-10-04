@@ -110,10 +110,10 @@ describe('square-covering structures', function() {
 	
 	it('finds continuators', function() {
 		var srp = new jsts.algorithm.MinSquareCoveringData(factory.createSimpleRectilinearPolygon([10,10, 30,30, 15,25]));  // L-shape
-		srp.findContinuatorSegment().length().should.equal(15);
+		srp.findSegmentWithContinuator().length().should.equal(15);
 		
 		var srp = new jsts.algorithm.MinSquareCoveringData(factory.createSimpleRectilinearPolygon([0,0, 20,20, 0,15, 15,5]));  // U-shape
-		srp.findContinuatorSegment().length().should.equal(5);
+		srp.findSegmentWithContinuator().length().should.equal(5);
 	})
 
 	it('removes erasable regions in rectangles', function () {
@@ -231,24 +231,24 @@ describe('square-covering structures', function() {
 	
 
 	it('finds continuator segments', function() {
-		srp0.findContinuatorSegment().knobCount.should.equal(4);
-		srp1.findContinuatorSegment().knobCount.should.equal(1);
-		srp4.findContinuatorSegment().knobCount.should.equal(1);
+		srp0.findSegmentWithContinuator().knobCount.should.equal(4);
+		srp1.findSegmentWithContinuator().knobCount.should.equal(1);
+		srp4.findSegmentWithContinuator().knobCount.should.equal(1);
 	})
 
 
 	it('finds continuators', function() {
 		var segment;
 		
-		segment = srp0.segments.first; segment.continuator().should.eql({minx:0,maxx:10,miny:0,maxy:10}); 
-		segment = segment.next;	       segment.continuator().should.eql({minx:0,maxx:10,miny:0,maxy:10}); 
-		segment = segment.next;	       segment.continuator().should.eql({minx:0,maxx:10,miny:0,maxy:10}); 
-		segment = segment.next;	       segment.continuator().should.eql({minx:0,maxx:10,miny:0,maxy:10}); 
+		segment = srp0.segments.first; segment.getAdjacentSquareInPolygon().should.eql({minx:0,maxx:10,miny:0,maxy:10}); 
+		segment = segment.next;	       segment.getAdjacentSquareInPolygon().should.eql({minx:0,maxx:10,miny:0,maxy:10}); 
+		segment = segment.next;	       segment.getAdjacentSquareInPolygon().should.eql({minx:0,maxx:10,miny:0,maxy:10}); 
+		segment = segment.next;	       segment.getAdjacentSquareInPolygon().should.eql({minx:0,maxx:10,miny:0,maxy:10}); 
 		
-		segment = srp1.segments.first; segment.continuator().should.eql({minx:0,maxx:10,miny:0,maxy:10}); 
-		segment = segment.next.next;   segment.continuator().should.eql({minx:0,maxx:10,miny:10,maxy:20}); 
+		segment = srp1.segments.first; segment.getAdjacentSquareInPolygon().should.eql({minx:0,maxx:10,miny:0,maxy:10}); 
+		segment = segment.next.next;   segment.getAdjacentSquareInPolygon().should.eql({minx:0,maxx:10,miny:10,maxy:20}); 
 		
-		segment = srp3.segments.first;	           segment.continuator().should.eql({minx:-10,maxx:0,miny:0,maxy:10});
-		segment=segment.next.next.next.next.next;  segment.continuator().should.eql({minx:20,maxx:40,miny:0,maxy:20});
+		segment = srp3.segments.first;	           segment.getAdjacentSquareInPolygon().should.eql({minx:-10,maxx:0,miny:0,maxy:10});
+		segment=segment.next.next.next.next.next;  segment.getAdjacentSquareInPolygon().should.eql({minx:20,maxx:40,miny:0,maxy:20});
 	});
 });

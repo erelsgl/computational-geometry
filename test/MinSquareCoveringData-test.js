@@ -25,7 +25,7 @@ describe('square-covering structures', function() {
 	var srp2 = new jsts.algorithm.MinSquareCoveringData(factory.createSimpleRectilinearPolygon([-10,0, 0,10, 10,0, 20,20])); // ח shape
 	var srp3 = new jsts.algorithm.MinSquareCoveringData(factory.createSimpleRectilinearPolygon([-10,0, 0,10, 10,0, 40,20])); // elongated ח shape
 	var srp4 = new jsts.algorithm.MinSquareCoveringData(factory.createSimpleRectilinearPolygon([0,0,10,10,20,20])); // L-shape
-	var srp5 = new jsts.algorithm.MinSquareCoveringData(factory.createSimpleRectilinearPolygon([0,10, 20,0])); // L-shape
+	var srp5 = new jsts.algorithm.MinSquareCoveringData(factory.createSimpleRectilinearPolygon([0,10, 20,0])); // rectangle
 	
 	it('calculates the convexity of corners', function() {
 		srp1.corners.pluck("isConvex").should.eql([true,true,true,true]);
@@ -41,6 +41,15 @@ describe('square-covering structures', function() {
 		srp3.contains({x:50,y:10}).should.equal(false); // external
 		srp3.contains({x:10,y:10}).should.equal(false); // boundary
 	})
+	
+	it('knows the direction of the polygon interior', function() {
+		srp1.corners.map(function(corner){return corner.signOfPolygonInteriorX()}).should.eql([1,-1,-1,1]);
+		srp1.corners.map(function(corner){return corner.signOfPolygonInteriorY()}).should.eql([1,1,-1,-1]);
+
+		srp4.corners.map(function(corner){return corner.signOfPolygonInteriorX()}).should.eql([1,-1,-1,-1,-1,1]);
+		srp4.corners.map(function(corner){return corner.signOfPolygonInteriorY()}).should.eql([1,1,1,1,-1,-1]);
+	})
+	
 	
 	it('finds closest segments', function() {
 		var point1 = {x:5,y:10};

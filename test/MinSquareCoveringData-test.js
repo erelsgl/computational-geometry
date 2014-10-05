@@ -209,6 +209,15 @@ describe('square-covering structures', function() {
 		srp.corners.pluck("y").should.eql([10,20,20,10]);
 		
 	});
+	
+	it('removes erasable regions in special L-shapes', function() {
+		srp = new jsts.algorithm.MinSquareCoveringData(new jsts.geom.SimpleRectilinearPolygon([0,0, 20,1, 21,30], factory));
+		srp.corners.pluck("x").should.eql([00,20,20,21,21,00]);
+		srp.corners.pluck("y").should.eql([00,00,01,01,30,30]);
+		srp.removeErasableRegion(srp.segments.first.next.next.next.next);
+		srp.corners.pluck("x").should.eql([00,20,20,21,21,00]);
+		srp.corners.pluck("y").should.eql([00,00,01,01,22,22]);
+	})
 
 	it('removes erasable regions in T-shapes', function () {
 		var srp = new jsts.algorithm.MinSquareCoveringData(new jsts.geom.SimpleRectilinearPolygon([0,10, 25,0, 35,30, 25,20], factory));

@@ -1,7 +1,11 @@
 computational-geometry.js
 =========================
 
-Implementations of some computational geometry algorithms in Node.js.
+Implementations of some computational geometry algorithms in Node.js:
+
+* [Minimum square covering](https://en.wikipedia.org/wiki/Polygon_covering#Covering_a_rectilinear_polygon_with_squares);
+* [Maximum disjoint set](https://en.wikipedia.org/wiki/Maximum_disjoint_set);
+* [Fair cake-cutting](https://en.wikipedia.org/wiki/Fair_cake-cutting) with square pieces.
 
 The algorithms are implemented as extensions to the [JSTS](https://github.com/bjornharrtell/jsts) library.
 

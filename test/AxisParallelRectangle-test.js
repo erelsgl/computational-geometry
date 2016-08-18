@@ -1,6 +1,8 @@
+#!mocha
+
 /**
  * a unit-test for maximum-disjoint-set based on JSTS.
- * 
+ *
  * @author Erel Segal-Halevi
  * @since 2014-03
  */
@@ -41,9 +43,15 @@ describe('AxisParallelRectangle', function() {
 		r0101.interiorDisjoint(r0224).should.equal(true);
 		r0101.interiorDisjoint(r1302).should.equal(true);
 		r0101.interiorDisjoint(r2402).should.equal(true);
-		
+
 		r0202.interiorDisjoint(r1313).should.equal(false);
 		r0202.interiorDisjoint(r2424).should.equal(true);
 	})
-})
 
+	it('knows its internal envelope', function() {
+		r0123.getEnvelopeInternal().minx.should.equal(0)
+	  r0123.getEnvelopeInternal().maxx.should.equal(1)
+		r0123.getEnvelopeInternal().miny.should.equal(2)
+	  r0123.getEnvelopeInternal().maxy.should.equal(3)
+	})
+})

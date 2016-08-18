@@ -1,7 +1,7 @@
 {
-  "name": "rectangles",
-  "description": "Functions related to squares and rectangles, such as: calculate a maximum set of non-overlapping shapes",
-  "version": "0.1.0",
+  "name": "computational-geometry",
+  "description": "Node.js implementations of some computational geometry algorithms",
+  "version": "0.2.0",
   "author": "Erel Segal-haLevi <erelsgl@gmail.com>",
   "repository": {
     "type": "git",
@@ -11,10 +11,10 @@
     "underscore": "*",
     "argminmax": "*",
     "seed-random": "*",
-    "js-combinatorics": "*",
+    "js-combinatorics": "0.5.2",
     "async": "*",
     "jsclass": "*",
-    "jsts": "*",
+    "jsts": "0.14.0",
     "system": "*",
     "almost-equal": "*"
   },
@@ -28,7 +28,8 @@
   "keywords": [
     "rectangles",
     "optimization",
-    "geometry"
+    "geometry",
+    "computational geometry"
   ],
-  "license": "LGPL"
+  "license": "LGPL-2.0+"
 }

@@ -1,6 +1,7 @@
+#!mocha
 /**
  * a unit-test for maximum-disjoint-set based on JSTS.
- * 
+ *
  * @author Erel Segal-Halevi
  * @since 2014-03
  */
@@ -87,5 +88,3 @@ describe('representativeDisjointSet in interesting cases', function() {
 //		console.dir(candidateSets[1]);
 	})
 })
-
-

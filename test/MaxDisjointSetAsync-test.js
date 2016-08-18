@@ -61,7 +61,7 @@ describe('MaximumDisjointSet in simple cases', function() {
 	})
 })
 
-describe.only('MaximumDisjointSet with diagonal rectangles', function() {
+describe('MaximumDisjointSet with diagonal rectangles', function() {
 	it('works for disjoint rectangles', function(done) {
 		new MaximumDisjointSetSolver([r0101,r2323]).solve(function(err,result) {
 			result.should.have.lengthOf(2);

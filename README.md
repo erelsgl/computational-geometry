@@ -12,6 +12,7 @@ The algorithms are implemented as extensions to the [JSTS](https://github.com/bj
 
 Installation
 ------------
+Installation requires browserify, and it is only required if you want to run the client code.
 
     git clone https://github.com/erelsgl/computational-geometry.git
     cd computational-geometry

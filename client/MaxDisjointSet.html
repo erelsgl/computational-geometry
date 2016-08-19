@@ -1,0 +1,244 @@
+<html>
+<head>
+<meta charset='utf8' />
+<script src="jsmodules/jquery-1.11.0.min.js"></script>
+<script src="jsmodules/svg.min.js"></script>
+<script src="jsmodules/svg.draggable.min.js"></script>
+<script src="jsmodules/svg.math.js"></script>
+<script src="jsmodules/svg.export.js"></script>
+<script src="jsmodules/arg.js.v1.1.min.js"></script>
+
+<script src="DraggablePoints.js"></script>
+<script src="ShapeCollection.js"></script>
+<script src="Walls.js"></script>
+
+<script src="events.js"></script>
+
+<script type='text/javascript' src='jsts.bundle.js'></script>
+
+<link rel='stylesheet' href='style.css' />
+<title>Maximum Disjoint Set</title>
+
+</head>
+<body>
+
+<table><tr><td>
+<table>
+<tr><td colspan='3' style='text-align:center'><input class='wall' id='wall-top' type='checkbox'/></td></tr>
+<tr>
+	<td style='vertical-align:middle'><input class='wall' id='wall-left' type='checkbox'/></td>
+	<td>
+	<svg id='svg' style="background:#ffe; border:dotted #ccc 3px">
+	</svg></td>
+	<td style='vertical-align:middle'><input class='wall' id='wall-right' type='checkbox'/></td>
+</tr>
+<tr><td colspan='3' style='text-align:center'><input class='wall' id='wall-bottom' type='checkbox'/></td></tr>
+<tr><td colspan='3'>
+
+	<p id='status'></p>
+	<div class='reference'>
+	<h2>References</h2>
+	<ul>
+	<li>Wikipedia, <a href='https://en.wikipedia.org/wiki/Maximum_disjoint_set'>Maximum disjoint set</a>.</li>
+	<li><a href='https://github.com/erelsgl/computational-geometry/blob/master/lib/MaxDisjointSetAsync.js'>Source code on GitHub</a>
+	</ul>
+	</div>
+
+</td></tr>
+
+
+</table>
+
+</td><td style='font-size:12px'>
+<p><a href='index.html'>Computational Geometry</a>  &gt; </p>
+<h1>Maximum Disjoint Set</h1>
+<p>INPUT: A collection of candidate shapes. Move the circles to change the candidates.</p>
+<p>OUTPUT: A largest set of interior-disjoint candidates.</p>
+<p>
+CONTROLS:
+<ul>
+<li>
+Add a point by clicking a color. It is recommended to add no more than <span id='max-point-count'>20</span> points.
+<br/>
+<button class='addpoint'>Blue</button>
+<button class='addpoint'>Cyan</button>
+<button class='addpoint'>Green</button>
+<button class='addpoint'>Yellow</button>
+<button class='addpoint'>Red</button>
+<button class='addpoint'>Pink</button>
+<button class='addpoint'>Black</button>
+</li>
+<li>Remove a point by dragging it over the left or top border;</li>
+<li>Save your configuration by copying the <a id='permalink' href=''>PermaLink</a>.</li>
+<li><button class='export'>Export</button> then right-click to save the image: <canvas id='canvas' style='width:10px;height:10px;border:solid black 1px'></canvas></li>
+<!-- li><button class='shuffley'>Shuffle the y values</button> randomly, keeping the x values;</li -->
+<li><button class='randomize'>Move all points randomly</button>;</li>
+<li>Remove all points by clicking <button class='clear'>Clear</button>.</li>
+<li><button class='interrupt'>Interrupt the current calculation.</button>.</li>
+</ul>
+
+<form method='get' action=''>
+
+
+<table>
+<tr><th>Shapes:</th><td><select id='shape' name='shape' class='control'>
+	<option value='axisParallelSquares' selected='selected'>Axis-parallel rectangles</option>
+	<option value='rotatedSquares'>Rotated Squares</option>
+	<option value='RAITs'>Right-Angled Isosceles Triangles</option>
+</select>
+<input class='control' name='maxSlimness' id='maxSlimness' size='1' value='1' style='width:2em'/>-fat
+</td></tr>
+<tr><th>Drawing:</th><td>: <select id='draw' name='draw' class='control'>
+	<option value='drawAll'>All candidates</option>
+	<option value='drawDisjoint' selected='selected'>Max set of disjoint candidates</option>
+	<!-- option value='drawRepresentatives'>Disjoint representatives</option>
+	<option value='drawAllRepresentatives'>All representatives</option>
+	<!-- option value='drawFairDivision'>Half-Proportional Division</option -->
+	<option value='drawNone'>Nothing</option>
+</select> <input id='numPerColor' name='numPerColor' class='control' size='2' value='1' />
+</td></tr>
+<tr><th>Walls:</th><td><input id='walls' name='walls' value='' /></td></tr>
+<tr><th>Points:</th><td><textarea rows='10' cols='10' name='points' id='points'></textarea></td></tr>
+<tr><th colspan='2'><input type='submit' /></th></tr>
+</table>
+</form>
+
+</td>
+</tr>
+</table>
+
+<script type='text/javascript'>$(document).ready(function() {
+
+// grid lines:
+window.svgpaper.line(0,200, 400,200).stroke({ width: 1, color:'#ccc' });
+window.svgpaper.line(200,0, 200,400).stroke({ width: 1, color:'#ccc' });
+window.svgpaper.line(0,0, 400,400).stroke({ width: 1, color:'#ccc' });
+window.svgpaper.line(0,400, 400,0).stroke({ width: 1, color:'#ccc' });
+
+function drawShapes(err, shapes) { // A callback for the asynchronous solver
+	for (var i=0; i<shapes.length; ++i)
+		window.landplots.add(shapes[i]);
+	setStatus(""+window.points.length+" points ; "+window.landplots.length+" shapes"+"");
+	$(".interrupt").attr("disabled","disabled");
+}
+
+
+function drawShapesAndUpdateLink() {
+	if (window.solver) window.solver.interrupt();
+	$(".interrupt").removeAttr("disabled");
+	window.landplots.clear();
+
+	updatePermaLink();
+	setStatus(""+(window.points.length)+" points. Calculating disjoint set...");
+
+	var drawMode = $("#draw").val();
+	if (drawMode==='drawNone') return;
+
+	var shapeName = $("#shape").val();
+	
+	setTimeout(function() {
+		if (drawMode=="drawRepresentatives" || drawMode=="drawAllRepresentatives") {
+			var candidateSets = [];
+			var candidatesByColor = {};
+			var numPerColor = parseInt($("#numPerColor").val()) || 1;
+			var groupId = 1;
+			for (var color in window.points.byColor)  {
+				var candidatesOfColor = window.calcShapesTouchingPoints(
+						shapeName, window.points.byColor[color], envelopeFromWalls());
+				for (var i in candidatesOfColor) {
+					candidatesOfColor[i].groupId = groupId++;
+					candidatesOfColor[i].color = color;
+				}
+				for (var i=0; i<numPerColor; ++i)
+					candidateSets.push(candidatesOfColor);
+				candidatesByColor[color]=candidatesOfColor;
+			}
+			if (drawMode=="drawRepresentatives") {
+				var newStatus = "";
+				for (var color in window.points.byColor) {
+					var maxDisjointSetOfColor = window.calcMaxDisjointSet(candidatesByColor[color], candidateSets.length);
+					newStatus += color+":"+window.points.byColor[color].length+"p"+maxDisjointSetOfColor.length+"s ";
+					for (var i in maxDisjointSetOfColor) {
+						var shape = maxDisjointSetOfColor[i];
+						window.landplots.add(shape, {stroke: shape.color, fill: 'transparent'});
+					}
+				}
+				var shapes = window.calcRepresentativeDisjointSet(candidateSets);
+				newStatus += "   representatives:"+shapes.length;
+				drawShapes(null, shapes);
+				setStatus(newStatus);
+			} else {
+				drawShapes(null,candidateSets.reduce(function(a,b){return a.concat(b)}));
+			}
+		} else if (drawMode=="drawFairDivision") {
+			var maxSlimness = parseFloat($("#maxSlimness").val());
+			window.drawFairDivision(maxSlimness);
+		} else { // drawDisjoint or drawAll
+			var candidates = window.calcShapesTouchingPoints(
+				shapeName, window.points, envelopeFromWalls());
+			if (drawMode=="drawAll") {
+				drawShapes(null,candidates);
+			} else {  // drawMode=='drawDisjoint'
+				window.solver = window.getMaxDisjointSetSolver(candidates, window.points.length-1);
+				window.solver.solve(drawShapes);
+			}
+		}
+	},10);
+}
+
+function updatePermaLink() {
+	var wallsString = document.getElementById('walls').value = wallsToString();
+	var pointsString = window.points.toString();
+	document.getElementById('points').value = pointsString.replace(/:/g,":\n");
+	var query = "walls="+encodeURI(wallsString)+"&points="+encodeURI(pointsString) +
+			"&draw="+$("#draw").val()+"&shape="+$("#shape").val();
+	window.updatePermaLink(query);
+}
+
+$(".addpoint").click(function() {
+	var color=$(this).text().toLowerCase();
+	window.points.add({x:20,y:20}, color); 
+	setStatus(""+(window.points.length)+" points");
+});
+
+$(".randomize").click(function() {
+	window.points.randomize(canvas.width,canvas.height);
+});
+
+$(".shuffley").click(function() {
+	window.points.shuffleYValues();
+});
+
+$(".clear").click(function() {
+	window.points.clear(); 
+});
+
+
+$(".control").change(drawShapesAndUpdateLink);
+
+$(".wall").change(function() {
+	drawShapesAndUpdateLink();
+})
+
+
+
+window.landplots =  ShapeCollection(window.svgpaper, /*default style =*/ {
+	stroke: '#000',
+	'stroke-dasharray': '5,5',
+	opacity: 0.5,
+});
+
+window.points = DraggablePoints(window.svgpaper, /* change event = */drawShapesAndUpdateLink);
+
+window.points.fromString(Arg("points")||"50,50:100,100:150,150:200,200:250,250:300,300:350,350");
+wallsFromString(Arg("walls")||"1,1,1,1");
+if (Arg("draw")) $("#draw").val(Arg("draw"));
+if (Arg("shape")) $("#shape").val(Arg("shape"));
+
+drawShapesAndUpdateLink();
+
+});</script>
+
+
+</body>
+</html>

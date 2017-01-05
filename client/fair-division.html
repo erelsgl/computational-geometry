@@ -27,13 +27,13 @@ td {vertical-align:top}
 
 <table><tr><td>
 <table>
-<tr><td colspan='3' style='text-align:center'><input class='wall' id='wall-top' type='checkbox'/></td></tr>
+<tr><td colspan='3' style='text-align:center'><input class='wall' id='wall-top' type='checkbox' checked='checked'/></td></tr>
 <tr>
 	<td style='vertical-align:middle'><input class='wall' id='wall-left' type='checkbox' checked='checked'/></td>
 	<td>
 	<svg id='svg' style="background:#ffe; border:dotted #ccc 3px">
 	</svg></td>
-	<td style='vertical-align:middle'><input class='wall' id='wall-right' type='checkbox'/></td>
+	<td style='vertical-align:middle'><input class='wall' id='wall-right' type='checkbox' checked='checked'/></td>
 </tr>
 <tr><td colspan='3' style='text-align:center'><input class='wall' id='wall-bottom' type='checkbox'  checked='checked'/></td></tr>
 <tr><td colspan='3' id='status'></td></tr>
@@ -42,19 +42,19 @@ td {vertical-align:top}
 </td><td style='font-size:12px'>
 <p><a href='index.html'>Computational Geometry</a>  &gt; </p>
 <h1>Fair-and-Square Cake-Cutting</h1>
-<p>Several partners want to divide a square land estate among them, giving each one a square land plot. 
-They have different preferences over parts of the estate. The preferences are represented by 
-colorful circles: each circle represents a point which the partner of that color finds valuable. 
+<p>Several partners want to divide a square land estate among them, giving each one a square land plot.
+They have different preferences over parts of the estate. The preferences are represented by
+colorful circles: each circle represents a point which the partner of that color finds valuable.
 <p>Some of the land estate borders are open (i.e. the land plots can flow over them) while others are closed.
 Use the checkboxes to select which are open and which are closed.
-<p>Select the number of partners and the number of value points per partner, run the division algorithm 
+<p>Select the number of partners and the number of value points per partner, run the division algorithm
 and observer the proportion of points given to each partner. You can then drag and move individual points and watch how the division changes.
 <table>
 <tr><th>Num of partners:</th><td>
 	<select id='numOfAgents' name='numOfAgents'>
 		<option>1</option>
 		<option>2</option>
-		<option>3</option>
+		<option selected='selected'>3</option>
 		<option>4</option>
 		<option>5</option>
 		<option>6</option>
@@ -65,7 +65,7 @@ and observer the proportion of points given to each partner. You can then drag a
 	</select>
 </td></tr>
 <tr><th>Total points per agent:</th><td>
-	<input id='pointsPerAgent' name='pointsPerAgent' value='1' />
+	<input id='numInputPointsPerAgent' name='numInputPointsPerAgent' value='100' />
 </td></tr>
 <!-- tr><th>Algorithm:</th><td><select id='algorithm' name='algorithm'>
 	<option value='staircaseAlgorithm'>Staircase</option>
@@ -87,7 +87,7 @@ and observer the proportion of points given to each partner. You can then drag a
 
 
 <script type='text/javascript'>$(document).ready(function() {
-	
+
 // grid lines:
 window.svgpaper.line(0,200, 400,200).stroke({ width: 1, color:'#ccc' });
 window.svgpaper.line(200,0, 200,400).stroke({ width: 1, color:'#ccc' });
@@ -109,10 +109,10 @@ var drawFairDivision = function() {
 
 	if (!window.points.byColor)
 		throw new Error("window.points is "+JSON.stringify(window.points));
-	var pointsByColor = window.points.byColor;
-	var pointsPerAgent = Object.keys(pointsByColor).map(function(key){return pointsByColor[key]});
+	var inputPointsByColor = window.points.byColor;
+	var inputPointsPerAgent = Object.keys(inputPointsByColor).map(function(key){return inputPointsByColor[key]});
 	var fairDivision = window.calcHalfProportionalDivision(
-		pointsPerAgent, envelopeFromWalls(), maxSlimness);
+		inputPointsPerAgent, envelopeFromWalls(), maxSlimness);
 
 	var newStatus = " ";
 	for (var color in window.points.byColor) {
@@ -125,8 +125,9 @@ var drawFairDivision = function() {
 	}
 	drawShapes(null,fairDivision);
 	setStatus($("#status").text()+" "+newStatus);
-	
-	if (fairDivision.length<pointsPerAgent.length)
+
+	var numOfAgents = inputPointsPerAgent.length
+	if (fairDivision.length<numOfAgents)
 		alert("Not enough land-plots! Please call Erel 09-7431290");
 }
 
@@ -137,8 +138,8 @@ window.landplots =  ShapeCollection(window.svgpaper, /*default style =*/ {
 });
 window.points = DraggablePoints(window.svgpaper, /* change event = */drawFairDivision);
 
-function valuePerAgent(numOfAgents) {
-	switch(numOfWalls()) {
+function upperBoundOfValuePerAgent(numOfAgents,numOfWalls) {
+	switch(numOfWalls) {
 	case 4: return numOfAgents*2;
 	case 3: case 2: return numOfAgents*2-1;
 	case 1: return Math.ceil((numOfAgents-2)*7/4+2);
@@ -148,28 +149,33 @@ function valuePerAgent(numOfAgents) {
 
 $("#numOfAgents").change(function() {
 	var numOfAgents = parseInt($("#numOfAgents").val());
-	var pointsPerAgent = valuePerAgent(numOfAgents)+1;
-	$("#pointsPerAgent").val(pointsPerAgent);
-	$("#pointsPerAgent").trigger("change");
+	determineNumInputPointsPerAgentByNumOfAgents=false;
+	if (determineNumInputPointsPerAgentByNumOfAgents) {
+		var numInputPointsPerAgent = upperBoundOfValuePerAgent(numOfAgents,numOfWalls())+1;
+		$("#numInputPointsPerAgent").val(numInputPointsPerAgent);
+		$("#numInputPointsPerAgent").trigger("change");
+	}
 })
 
-$("#pointsPerAgent").change(function() {
+$("#numInputPointsPerAgent").change(function() {
 	var numOfAgents = parseInt($("#numOfAgents").val());
-	var pointsPerAgent = parseInt($("#pointsPerAgent").val());
-	$("#guaranteedPointsPerAgent").val(Math.ceil(pointsPerAgent/valuePerAgent(numOfAgents)));
+	var numInputPointsPerAgent = parseInt($("#numInputPointsPerAgent").val());
+	var guaranteedPointsPerAgent = Math.ceil(numInputPointsPerAgent/upperBoundOfValuePerAgent(numOfAgents,numOfWalls()));
+	//alert(guaranteedPointsPerAgent)
+	$("#guaranteedPointsPerAgent").val(guaranteedPointsPerAgent);
 })
 
-var colors = ['blue', 'cyan', 'green', 'yellow', 'pink', 'red', 'brown', 'black', 'grey'];
+var colors = ['blue', 'red', 'green', 'yellow', 'pink', 'cyan', 'brown', 'black', 'grey'];
 $("#createStaircaseDemo").click(function() {
-	window.points.clear(); 
-	
+	window.points.clear();
+
 	var numOfAgents = parseInt($("#numOfAgents").val());
-	var pointsPerAgent = parseInt($("#pointsPerAgent").val());
+	var numInputPointsPerAgent = parseInt($("#numInputPointsPerAgent").val());
 	for (var i=0; i<numOfAgents; ++i) {
 		var color = colors[i%colors.length];
-		for (var j=0; j<pointsPerAgent; ++j) {
+		for (var j=0; j<numInputPointsPerAgent; ++j) {
 			var newPoint = new SVG.math.Point(Math.random() * canvas.width,Math.random() * canvas.height);
-			window.points.add(newPoint, color); 
+			window.points.add(newPoint, color);
 		}
 	}
 	drawFairDivision();
@@ -179,8 +185,8 @@ $(".wall").change(function() {
 	drawFairDivision();
 })
 
-$("#numOfAgents").val("3");
 $("#numOfAgents").trigger("change");
+$("#numInputPointsPerAgent").trigger("change");
 $("#createStaircaseDemo").trigger("click");
 
 });</script>

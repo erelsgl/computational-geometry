@@ -7,8 +7,8 @@
  */
 
 var should = require('should');
-var jsts = require("../jsts-extended");
-require("../jsts-extended/half-proportional-division-staircase");
+var jsts = require("../lib");
+require("../lib/half-proportional-division-staircase");
 //require("../jsts-extended/half-proportional-division-guillotine");
 
 var halfProportionalDivision = jsts.algorithm.halfProportionalDivision;

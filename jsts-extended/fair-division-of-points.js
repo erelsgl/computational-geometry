@@ -5,9 +5,9 @@
  * @since 2014-04
  */
 
-var jsts = require('../../computational-geometry');
+var jsts = require('../lib');
 var _ = require("underscore");
-var utils = require('../../computational-geometry/lib/numeric-utils');
+var utils = require('../lib/numeric-utils');
 
 var DEFAULT_ENVELOPE = new jsts.geom.Envelope(-Infinity,Infinity, -Infinity,Infinity);
 

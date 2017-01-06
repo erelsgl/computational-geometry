@@ -1,6 +1,6 @@
 /**
  * Fairly cut a SimpleRectilinearPolygon such that each agent receives a square.
- * 
+ *
  * @author Erel Segal-Halevi
  * @since 2014-09
  */
@@ -17,11 +17,11 @@ function logValueFunctions(valueFunctions) {
 }
 
 function TRACE (numOfAgents, s) {
-	console.log(Array(Math.max(0,6-numOfAgents)).join("   ")+s);
+//	console.log(Array(Math.max(0,6-numOfAgents)).join("   ")+s);
 };
 
 function TRACE_NO_LANDPLOT(valueFunctions) {
-	logValueFunctions(valueFunctions);
+//	logValueFunctions(valueFunctions);
 }
 
 function TRACE_PARTITION(numOfAgents, s, y, k, northAgents, northPlots, southAgents, southPlots) {
@@ -38,10 +38,10 @@ function TRACE_PARTITION(numOfAgents, s, y, k, northAgents, northPlots, southAge
 jsts.algorithm.rectilinearPolygonDivision = function recursive(valueFunctions, cake, requiredLandplotValue) {
 	var numOfAgents = valueFunctions.length;
 	TRACE(numOfAgents,numOfAgents+" agents("+_.pluck(valueFunctions,"color")+"), trying to give each a value of "+requiredLandplotValue+" from a cake "+cake.toString());
-	
+
 	var cakeCoveringData = new jsts.algorithm.MinSquareCoveringData(cake);
 
-	valueFunctions.forEach(function(valueFunction) {	
+	valueFunctions.forEach(function(valueFunction) {
 		valueFunction.candidateSquares = [];
 	});
 
@@ -49,7 +49,7 @@ jsts.algorithm.rectilinearPolygonDivision = function recursive(valueFunctions, c
 	var knobs = cakeCoveringData.findAllSegmentsWithContinuators();
 	var shouldRemoveKnobs = false;
 	knobs.forEach(function(knob) {
-		if (!knob.hasContinuator())  // this is possible if the structure has changed by removeErasableRegion 
+		if (!knob.hasContinuator())  // this is possible if the structure has changed by removeErasableRegion
 			return;
 		var knobLength = knob.length();
 		var continuator = knob.getAdjacentSquareInPolygon();
@@ -73,14 +73,14 @@ jsts.algorithm.rectilinearPolygonDivision = function recursive(valueFunctions, c
 			});
 			corner = corner.next;
 		};
-		
+
 		if (!numOfCandidatesPerKnob) {
 			TRACE(numOfAgents,"\t-- No demand - removing knob");
 			cakeCoveringData.removeErasableRegion(knob);
 			shouldRemoveKnobs = true;
 		}
 	});
-	
+
 	if (shouldRemoveKnobs) {
 		var newCake = cakeCoveringData.getResidualPolygon();
 		return recursive(valueFunctions, newCake, requiredLandplotValue)
@@ -91,12 +91,12 @@ jsts.algorithm.rectilinearPolygonDivision = function recursive(valueFunctions, c
 			return square.size
 		});
 	});
-	
+
 	// get the agent with the square with the smallest height overall:
 	var iWinningAgent = _.argmin(valueFunctions, function(valueFunction) {
 		return valueFunction.square.size;
 	});
-	
+
 	var winningAgent = valueFunctions[iWinningAgent];
 	var winningSquare = winningAgent.square;
 
@@ -120,4 +120,3 @@ jsts.algorithm.rectilinearPolygonDivision = function recursive(valueFunctions, c
 	remainingLandplots.push(landplot);
 	return remainingLandplots;
 }
-

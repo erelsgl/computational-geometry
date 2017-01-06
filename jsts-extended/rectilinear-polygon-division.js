@@ -1,6 +1,6 @@
 /**
  * Fairly cut a SimpleRectilinearPolygon such that each agent receives a square.
- * 
+ *
  * @author Erel Segal-Halevi
  * @since 2014-09
  */
@@ -17,11 +17,11 @@ function logValueFunctions(valueFunctions) {
 }
 
 function TRACE (numOfAgents, s) {
-	console.log(Array(Math.max(0,6-numOfAgents)).join("   ")+s);
+//	console.log(Array(Math.max(0,6-numOfAgents)).join("   ")+s);
 };
 
 function TRACE_NO_LANDPLOT(valueFunctions) {
-	logValueFunctions(valueFunctions);
+//	logValueFunctions(valueFunctions);
 }
 
 function TRACE_PARTITION(numOfAgents, s, y, k, northAgents, northPlots, southAgents, southPlots) {
@@ -102,11 +102,11 @@ jsts.algorithm.rectilinearPolygonDivision = function recursive(valueFunctions, c
 		return [];
 	}
 
-	if (cakeHasChanged) 
+	if (cakeHasChanged)
 		cake = cakeCoveringData.getResidualPolygon();
 	var originalCakeCoveringData = new jsts.algorithm.MinSquareCoveringData(cake);
 
-	valueFunctions.forEach(function(valueFunction) {	
+	valueFunctions.forEach(function(valueFunction) {
 		valueFunction.candidateSquares = [];
 	});
 
@@ -127,12 +127,12 @@ jsts.algorithm.rectilinearPolygonDivision = function recursive(valueFunctions, c
 			return square.size
 		});
 	});
-	
+
 	// get the agent with the square with the smallest height overall:
 	var iWinningAgent = _.argmin(valueFunctions, function(valueFunction) {
 		return valueFunction.square.size;
 	});
-	
+
 	var winningAgent = valueFunctions[iWinningAgent];
 	var winningSquare = winningAgent.square;
 
@@ -156,4 +156,3 @@ jsts.algorithm.rectilinearPolygonDivision = function recursive(valueFunctions, c
 	remainingLandplots.push(landplot);
 	return remainingLandplots;
 }
-

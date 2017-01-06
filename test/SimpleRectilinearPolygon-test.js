@@ -19,6 +19,11 @@ describe('SimpleRectilinearPolygon', function() {
 	var srp2 = factory.createSimpleRectilinearPolygon([-10,0, 0,10, 10,0, 20,20]); // ח shape
 	var srp3 = factory.createSimpleRectilinearPolygon([-10,0, 0,10, 10,0, 40,20]); // elongated ח shape
 	var srp4 = factory.createSimpleRectilinearPolygon([0,0,10,10,20,20]); // L-shape
+	var srp_empty = null
+
+	it('initialized from empty set of points', function() {
+		srp_empty = factory.createSimpleRectilinearPolygon([0,0]);
+	});
 
 	it('initializes from minimal set of xy values', function() {
 		srp1.getCoordinates2D().should.eql(

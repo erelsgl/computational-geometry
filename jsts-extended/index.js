@@ -1,5 +1,4 @@
-var jsts = require("../../computational-geometry");
-require("./corners");
+var jsts = require("../lib");
 require("./fair-division-of-points");
 require("./half-proportional-division-staircase");
 require("./rectilinear-polygon-division");

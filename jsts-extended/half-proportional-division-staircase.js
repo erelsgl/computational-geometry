@@ -6,7 +6,7 @@
  */
 
 var jsts = require('../../computational-geometry');
-require("./corners");
+require("../lib/corners");
 require("./rectilinear-polygon-division");
 var numutils = require('../../computational-geometry/lib/numeric-utils');
 
@@ -33,7 +33,9 @@ function TRACE_NO_LANDPLOT(valueFunctions) {
 
 
 function TRACE_PARTITION(numOfAgents, s, y, k, northAgents, northPlots, southAgents, southPlots) {
+	/*
 	TRACE(numOfAgents,s+"(k="+k+", y="+round2(y)+"): "+southAgents.length+" south agents ("+_.pluck(southAgents,"color")+") got "+southPlots.length+" plots and "+northAgents.length+" north agents ("+_.pluck(northAgents,"color")+") got "+northPlots.length+" plots.");
+	*/
 }
 
 var roundFields3 = Math.roundFields.bind(0, 3);
@@ -105,7 +107,7 @@ jsts.algorithm.getOpenSides = function(envelope) {
  * The valuation of an agent is represented as an array of points with fields {x,y}. Each point has the same value.
  *    Each agent may also have a field "color", that is copied to the rectangle.
  *
- * @param envelope object with fields {minx,miny, maxx,maxy}; defines the boundaries for the landplots.
+ * @param envelope object with fields {minx,miny, maxx,maxy}; defines the boundaries for the landplots. Values may be +-Infinity.
  *
  * @return an array of squares, one per square per agent.
  */

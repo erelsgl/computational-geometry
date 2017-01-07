@@ -111,7 +111,7 @@ var drawFairDivision = function() {
 		throw new Error("window.points is "+JSON.stringify(window.points));
 	var inputPointsByColor = window.points.byColor;
 	var inputPointsPerAgent = Object.keys(inputPointsByColor).map(function(key){return inputPointsByColor[key]});
-	var fairDivision = window.calcHalfProportionalDivision(
+	var fairDivision = window.calcFairAndSquareDivision( //calcHalfProportionalDivision(
 		inputPointsPerAgent, envelopeFromWalls(), maxSlimness);
 
 	var newStatus = " ";

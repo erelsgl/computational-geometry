@@ -7,7 +7,7 @@ var _ = window._ = require("underscore");
 var factory = new jsts.geom.GeometryFactory();
 
 $(document).ready(function() {
-	
+
 /* SQUARES */
 
 window.calcSimpleRectilinearPolygon = function(points) {
@@ -41,11 +41,16 @@ window.calcRepresentativeDisjointSet = function(candidateSets) {
 	return jsts.algorithm.representativeDisjointSet	(candidateSets)
 }
 
-window.calcHalfProportionalDivision = function(pointsPerAgent, envelopeTemp, maxSlimness) {
+window.calcHalfProportionalDivision = function(agentsValuePoints, envelopeTemp, maxSlimness) {
 	return factory.createHalfProportionalDivision(
-			pointsPerAgent, envelopeTemp, maxSlimness);
+			agentsValuePoints, envelopeTemp, maxSlimness);
+}
+
+window.calcFairAndSquareDivision = function(agentsValuePoints, envelopeTemp, maxSlimness) {
+	return factory.createFairAndSquareDivision(
+			agentsValuePoints, envelopeTemp, maxSlimness);
 }
 
 
-}); // end of $(document).ready
 
+}); // end of $(document).ready

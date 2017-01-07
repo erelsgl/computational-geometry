@@ -22,13 +22,6 @@ describe('fair-and-square-division in simple cases', function() {
 		agentsValuePoints = []
 		factory.createFairAndSquareDivision(agentsValuePoints,CAKE,MAX_SLIMNESS).should.have.lengthOf(0);
 	})
-	it.skip('throws an exception for an agent with no value points', function() {
-		(function(){
-			agentsValuePoints = [ [] ]
-			plots = factory.createFairAndSquareDivision(agentsValuePoints,CAKE,MAX_SLIMNESS)
-			console.dir(plots)
-		}).should.throw(/no points/i);
-	})
 
 	it('returns the entire cake for 1 agent with value', function() {
 		agentsValuePoints = [ [{x:1,y:1}, {x:99,y:99}] ]
@@ -43,25 +36,75 @@ describe('fair-and-square-division in simple cases', function() {
 		plots[0].shouldEqualRectangle(0,0, 100,100);
 	})
 
-	it('divides the cake between 2 agents with different valuations', function() {
+	it('divides the cake between 2 agents with different best-quarters', function() {
 		agentsValuePoints = [
 			[{x:1,y:1}, {x:9,y:9}, {x:1,y:9}, {x:9,y:1},{x:5,y:5}],
 			[{x:91,y:91}, {x:99,y:99}, {x:91,y:99}, {x:99,y:91},{x:97,y:97}],
 		]
 		plots = factory.createFairAndSquareDivision(agentsValuePoints,CAKE,MAX_SLIMNESS);
 		plots.should.have.lengthOf(2);
+		//console.dir(plots)
 		plots[0].shouldEqualRectangle(0,0, 50,50);
-		plots[0].shouldEqualRectangle(50,50, 100,100);
+		plots[1].shouldEqualRectangle(50,50, 100,100);
 	})
 
-	it.only('divides the cake between 2 agents with identical valuations', function() {
+	it('divides the cake between 2 agents with identical valuations', function() {
 		agentsValuePoints = [
 			[{x:1,y:1}, {x:99,y:99}, {x:1,y:99}, {x:99,y:1},{x:70,y:70}],
 			[{x:1,y:1}, {x:99,y:99}, {x:1,y:99}, {x:99,y:1},{x:70,y:70}],
 		]
 		plots = factory.createFairAndSquareDivision(agentsValuePoints,CAKE,MAX_SLIMNESS);
 		plots.should.have.lengthOf(2);
-		console.dir(plots)
+		//console.dir(plots)
+		plots[0].shouldEqualRectangle(70,70, 100,100);
+		plots[1].shouldEqualRectangle(0,0, 70,70);
+	})
+
+	it('divides the cake between 2 agents with best-quarter NE', function() {
+		agentsValuePoints = [
+			[{x:1,y:1}, {x:99,y:99}, {x:1,y:99}, {x:99,y:1},{x:70,y:70}],
+			[{x:1,y:1}, {x:99,y:99}, {x:1,y:99}, {x:99,y:1},{x:60,y:60}],
+		]
+		plots = factory.createFairAndSquareDivision(agentsValuePoints,CAKE,MAX_SLIMNESS);
+		plots.should.have.lengthOf(2);
+		//console.dir(plots)
+		plots[0].shouldEqualRectangle(65,65, 100,100);
+		plots[1].shouldEqualRectangle(0,0, 65,65);
+	})
+
+	it('divides the cake between 2 agents with best-quarter SW', function() {
+		agentsValuePoints = [
+			[{x:1,y:1}, {x:99,y:99}, {x:1,y:99}, {x:99,y:1},{x:30,y:30}],
+			[{x:1,y:1}, {x:99,y:99}, {x:1,y:99}, {x:99,y:1},{x:40,y:40}],
+		]
+		plots = factory.createFairAndSquareDivision(agentsValuePoints,CAKE,MAX_SLIMNESS);
+		plots.should.have.lengthOf(2);
+		//console.dir(plots)
+		plots[0].shouldEqualRectangle(0,0, 35,35);
+		plots[1].shouldEqualRectangle(35,0, 100,65);
+	})
+
+	it('divides the cake between 2 agents with best-quarter SE', function() {
+		agentsValuePoints = [
+			[{x:1,y:1}, {x:99,y:99}, {x:1,y:99}, {x:99,y:1},{x:70,y:30}],
+			[{x:1,y:1}, {x:99,y:99}, {x:1,y:99}, {x:99,y:1},{x:60,y:40}],
+		]
+		plots = factory.createFairAndSquareDivision(agentsValuePoints,CAKE,MAX_SLIMNESS);
+		plots.should.have.lengthOf(2);
+		//console.dir(plots)
+		plots[0].shouldEqualRectangle(65,0, 100,35);
+		plots[1].shouldEqualRectangle(0,0, 65,65);
+	})
+
+	it('divides the cake between 2 agents with best-quarter NW', function() {
+		agentsValuePoints = [
+			[{x:1,y:1}, {x:99,y:99}, {x:1,y:99}, {x:99,y:1},{x:30,y:70}],
+			[{x:1,y:1}, {x:99,y:99}, {x:1,y:99}, {x:99,y:1},{x:40,y:60}],
+		]
+		plots = factory.createFairAndSquareDivision(agentsValuePoints,CAKE,MAX_SLIMNESS);
+		plots.should.have.lengthOf(2);
+		//console.dir(plots)
+		plots[0].shouldEqualRectangle(0,65, 35,100);
 	})
 })
 

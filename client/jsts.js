@@ -1,7 +1,7 @@
 /**
  * Main Javascript program for MinSquareCovering.html
  */
-var jsts = window.jsts = require("../jsts-extended");
+var jsts = window.jsts = require("../lib");
 var _ = window._ = require("underscore");
 
 var factory = new jsts.geom.GeometryFactory();

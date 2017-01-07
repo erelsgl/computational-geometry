@@ -53,8 +53,8 @@ and observe the proportion of points given to each partner. You can then drag an
 <tr><th>Num of partners:</th><td>
 	<select id='numOfAgents' name='numOfAgents'>
 		<option>1</option>
-		<option>2</option>
-		<option selected='selected'>3</option>
+		<option selected='selected'>2</option>
+		<option>3</option>
 		<option>4</option>
 		<option>5</option>
 		<option>6</option>
@@ -65,7 +65,7 @@ and observe the proportion of points given to each partner. You can then drag an
 	</select>
 </td></tr>
 <tr><th>Total points per agent:</th><td>
-	<input id='numInputPointsPerAgent' name='numInputPointsPerAgent' value='100' />
+	<input id='numInputPointsPerAgent' name='numInputPointsPerAgent' value='40' />
 </td></tr>
 <!-- tr><th>Algorithm:</th><td><select id='algorithm' name='algorithm'>
 	<option value='staircaseAlgorithm'>Staircase</option>
@@ -111,8 +111,12 @@ var drawFairDivision = function() {
 		throw new Error("window.points is "+JSON.stringify(window.points));
 	var inputPointsByColor = window.points.byColor;
 	var inputPointsPerAgent = Object.keys(inputPointsByColor).map(function(key){return inputPointsByColor[key]});
-	var fairDivision = window.calcFairAndSquareDivision( //calcHalfProportionalDivision(
-		inputPointsPerAgent, envelopeFromWalls(), maxSlimness);
+	var numOfAgents = inputPointsPerAgent.length
+
+
+	var fairDivision = numOfAgents<=2?
+		window.calcFairAndSquareDivision(inputPointsPerAgent, envelopeFromWalls(), maxSlimness):
+		window.calcHalfProportionalDivision(inputPointsPerAgent, envelopeFromWalls(), maxSlimness);
 
 	var newStatus = " ";
 	for (var color in window.points.byColor) {
@@ -126,7 +130,6 @@ var drawFairDivision = function() {
 	drawShapes(null,fairDivision);
 	setStatus($("#status").text()+" "+newStatus);
 
-	var numOfAgents = inputPointsPerAgent.length
 	if (fairDivision.length<numOfAgents)
 		alert("Not enough land-plots! Please call Erel 09-7431290");
 }
@@ -165,7 +168,7 @@ $("#numInputPointsPerAgent").change(function() {
 	$("#guaranteedPointsPerAgent").val(guaranteedPointsPerAgent);
 })
 
-var colors = ['blue', 'red', 'green', 'yellow', 'pink', 'cyan', 'brown', 'black', 'grey'];
+var colors = ['green', 'red', 'blue', 'yellow', 'pink', 'cyan', 'brown', 'black', 'grey'];
 $("#createStaircaseDemo").click(function() {
 	window.points.clear();
 

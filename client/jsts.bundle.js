@@ -2,13 +2,13 @@
 /**
  * Main Javascript program for MinSquareCovering.html
  */
-var jsts = window.jsts = require("../jsts-extended");
+var jsts = window.jsts = require("../lib");
 var _ = window._ = require("underscore");
 
 var factory = new jsts.geom.GeometryFactory();
 
 $(document).ready(function() {
-	
+
 /* SQUARES */
 
 window.calcSimpleRectilinearPolygon = function(points) {
@@ -42,19 +42,2279 @@ window.calcRepresentativeDisjointSet = function(candidateSets) {
 	return jsts.algorithm.representativeDisjointSet	(candidateSets)
 }
 
-window.calcHalfProportionalDivision = function(pointsPerAgent, envelopeTemp, maxSlimness) {
+window.calcHalfProportionalDivision = function(agentsValuePoints, envelopeTemp, maxSlimness) {
 	return factory.createHalfProportionalDivision(
-			pointsPerAgent, envelopeTemp, maxSlimness);
+			agentsValuePoints, envelopeTemp, maxSlimness);
 }
+
+window.calcFairAndSquareDivision = function(agentsValuePoints, envelopeTemp, maxSlimness) {
+	return factory.createFairAndSquareDivision(
+			agentsValuePoints, envelopeTemp, maxSlimness);
+}
+
 
 
 }); // end of $(document).ready
 
+},{"../lib":18,"underscore":58}],2:[function(require,module,exports){
+(function (global){
+/**
+ * Adds to jsts.algorithm some utility functions related to affine transformations.
+ *
+ * The following fields are supported:
+ * - translate[0] (real)  - added to the x value.
+ * - translate[1] (real)  - added to the y value.
+ * - scale      (real)    - multiplies the x and y values after translation.
+ * - rotateRadians        - rotate in positive directions by given number of radians.
+ * - rotateQuarters       - rotate in positive directions by given number of quarters (=90 degrees).
+ * - reflectXaxis  (boolean) - convert y to minus y.
+ * - reflectYaxis  (boolean) - convert x to minus x.
+ * - reflectXY  (boolean) - true to swap x with y after scaling.
+ *
+ * @author Erel Segal-Halevi
+ * @since 2014-04
+ */
 
-},{"../jsts-extended":7,"underscore":59}],2:[function(require,module,exports){
-module.exports = require("./lib/index");
+/**
+ * Apply a single transformation on a single point.
+ * @param t a transformation-description object with one or more fields from {translate, scale, rotateRadians, rotateQuarters, reflectXaxis, reflectYaxis, reflectXY}
+ * @param point {x:..,y:..}
+ */
 
-},{"./lib/index":22}],3:[function(require,module,exports){
+
+var jsts = global.jsts;
+
+var transformPoint1 = function(t, point) {
+	if (t.translate) {
+		point.x += t.translate[0];
+		point.y += t.translate[1];
+	}
+	if (t.scale) {
+		point.x *= t.scale;
+		point.y *= t.scale;
+	}
+	if (t.rotateRadians) {  // PROBLEM: rounding errors
+		var sin = Math.sin(t.rotateRadians);
+		var cos = Math.cos(t.rotateRadians);
+		var newX = cos*point.x - sin*point.y;
+		var newY = sin*point.x + cos*point.y;
+		point.x = newX;
+		point.y = newY;
+	}
+	if (t.rotateQuarters) {
+		var q = (t.rotateQuarters+4)%4;
+		var sin = q==1? 1: q==3? -1: 0;
+		var cos = q==0? 1: q==2? -1: 0;
+		var newX = (cos==0? 0: cos*point.x) - (sin==0? 0: sin*point.y);
+		var newY = (sin==0? 0: sin*point.x) + (cos==0? 0: cos*point.y);
+		point.x = newX;
+		point.y = newY;
+	}
+	if (t.reflectXaxis) {
+		point.y = -point.y;
+	}
+	if (t.reflectYaxis) {
+		point.x = -point.x;
+	}
+	if (t.reflectXY) {
+		var z = point.x;
+		point.x = point.y;
+		point.y = z;
+	}
+}
+
+
+/**
+ * Apply an array of transformations on a single point.
+ * @param transformation array with transformation-description objects.
+ * @param the changed point object.
+ */
+jsts.algorithm.transformPoint = function(transformation, point) {
+	if (transformation.forEach)
+		transformation.forEach(function(t) {
+			transformPoint1(t,point);
+		});
+	else
+		transformPoint1(transformation,point);
+	return point;
+};
+
+/**
+ * @return the given point after the application of the given transformations.
+ * @param transformation array with transformation-description objects.
+ * @param point {x,y}
+ * @note the input point is NOT changed.
+ */
+jsts.algorithm.transformedPoint = function(transformation, point) {
+	return jsts.algorithm.transformPoint(transformation, {x:point.x, y:point.y});
+};
+
+/**
+ * Transforms an AxisParallelRectangle using the given transformation.
+ * @param rect of class AxisParallelRectangle
+ * @param transformation an array of transformation-description objects.
+ */
+jsts.algorithm.transformAxisParallelRectangle = function(transformation, rect) {
+	var newMin = jsts.algorithm.transformPoint(transformation, {x:rect.minx, y:rect.miny});
+	var newMax = jsts.algorithm.transformPoint(transformation, {x:rect.maxx, y:rect.maxy});
+	rect.minx = Math.min(newMin.x,newMax.x);	rect.miny = Math.min(newMin.y,newMax.y);
+	rect.maxx = Math.max(newMin.x,newMax.x);	rect.maxy = Math.max(newMin.y,newMax.y);
+	return rect;
+};
+
+/**
+ * @return the given rectangle after the application of the given transformations.
+ * @param rect class AxisParallelRectangle
+ * @param transformation an array of transformation-description objects.
+ */
+jsts.algorithm.transformedAxisParallelRectangle = function(transformation, rect) {
+	var newMin = jsts.algorithm.transformPoint(transformation, {x:rect.minx, y:rect.miny});
+	var newMax = jsts.algorithm.transformPoint(transformation, {x:rect.maxx, y:rect.maxy});
+	return 	rect.factory.createAxisParallelRectangle(newMin.x,newMin.y, newMax.x,newMax.y);
+};
+
+/**
+* @return a transformation that reverses the effects of the given transformation.
+ */
+var reverseSingleTransformation = function(t) {
+	var r = {};
+	if (t.translate)
+		r.translate = [-t.translate[0], -t.translate[1]];
+	if (t.scale)
+		r.scale = 1/t.scale;
+	if (t.rotateRadians)
+		r.rotateRadians = -t.rotateRadians;
+	if (t.rotateQuarters)
+		r.rotateQuarters = (4-t.rotateQuarters)%4;
+	if (t.reflectXaxis)
+		r.reflectXaxis = t.reflectXaxis;
+	if (t.reflectYaxis)
+		r.reflectYaxis = t.reflectYaxis;
+	if (t.reflectXY)
+		r.reflectXY = t.reflectXY;
+	return r;
+}
+
+/**
+ * @return an array of transformations that reverses the effects of the given array of transformations.
+ */
+jsts.algorithm.reverseTransformation = function(transformation) {
+	var reverseTransformation = transformation.map(reverseSingleTransformation);
+	reverseTransformation.reverse();
+	return reverseTransformation;
+};
+
+}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{}],3:[function(require,module,exports){
+(function (global){
+  /**
+   * Represents an axis-parallel rectangle.
+   * Defined by: minx, miny, maxx, maxy.
+   * @author Erel Segal-Halevi
+   * @since 2014-03
+   */
+
+  var jsts = global.jsts;
+
+  /**
+   * @requires jsts/geom/Geometry.js
+   */
+
+  /**
+   * @extends {jsts.geom.Geometry}
+   * @constructor
+   */
+  jsts.geom.AxisParallelRectangle = function(minx,miny, maxx,maxy, factory) {
+    this.minx = Math.min(minx,maxx);
+    this.miny = Math.min(miny,maxy);
+    this.maxx = Math.max(minx,maxx);
+    this.maxy = Math.max(miny,maxy);
+    this.factory = factory;
+  };
+
+  jsts.geom.AxisParallelRectangle.prototype = Object.create(jsts.geom.Geometry.prototype);
+  jsts.geom.AxisParallelRectangle.constructor = jsts.geom.AxisParallelRectangle;
+
+  /**
+   * @return {boolean}
+   */
+  jsts.geom.AxisParallelRectangle.prototype.isEmpty = function() {
+    return (this.minx==this.maxx || this.miny==this.maxy);
+  };
+
+  jsts.geom.AxisParallelRectangle.prototype.getCoordinates = function() {
+	  throw new Error("not implemented");
+	  return [];
+  };
+
+  jsts.geom.AxisParallelRectangle.prototype.getExteriorRing = function() {
+	  return this;
+  };
+
+  jsts.geom.AxisParallelRectangle.prototype.getInteriorRingN = function(n) {
+	  throw new Error("not implemented");
+  };
+
+  jsts.geom.AxisParallelRectangle.prototype.getNumInteriorRing = function() {
+    return 0;
+  };
+
+  /**
+   * Returns the area of this <code>Polygon</code>
+   *
+   * @return the area of the polygon.
+   */
+  jsts.geom.AxisParallelRectangle.prototype.getArea = function() {
+	  if (!this.area)  {
+		  this.area = (this.maxx-this.minx)*(this.maxy-this.miny);
+	  }
+	  return this.area;
+  };
+
+  /**
+   * Returns the perimeter of this <code>Polygon</code>
+   *
+   * @return the perimeter of the polygon.
+   */
+  jsts.geom.AxisParallelRectangle.prototype.getLength = function() {
+	  if (!this.length)  {
+		  this.length = 2*((maxx-minx)+(maxy-miny));
+	  }
+	  return this.length;
+  };
+
+  /**
+   * Computes the boundary of this geometry
+   *
+   * @return {Geometry} a linear geometry (which may be empty).
+   * @see Geometry#getBoundary
+   */
+  jsts.geom.AxisParallelRectangle.prototype.getBoundary = function() {
+	  return this;
+  };
+
+  jsts.geom.AxisParallelRectangle.prototype.computeEnvelopeInternal = function() {
+    return new jsts.geom.Envelope(this.minx, this.maxx, this.miny, this.maxy);
+  };
+
+  /**
+   * This was part of JSTS 0.10, but does not work well in JSTS 1.2.1, so I had to add it myself.
+   */
+  jsts.geom.AxisParallelRectangle.prototype.getEnvelopeInternal = function() {
+    if (!this.cacheEnvelopeInternal)
+       this.cacheEnvelopeInternal = this.computeEnvelopeInternal()
+    return this.cacheEnvelopeInternal
+  };
+
+
+  jsts.geom.AxisParallelRectangle.prototype.getDimension = function() {
+    return 2;
+  };
+
+  jsts.geom.AxisParallelRectangle.prototype.getBoundaryDimension = function() {
+    return 1;
+  };
+
+
+  /**
+   * @param {Geometry}
+   *          other
+   * @param {number}
+   *          tolerance
+   * @return {boolean}
+   */
+  jsts.geom.AxisParallelRectangle.prototype.equalsExact = function(other, tolerance) {
+    if (!this.isEquivalentClass(other)) {
+      return false;
+    }
+    if (this.isEmpty() && other.isEmpty()) {
+      return true;
+    }
+    if (this.isEmpty() !== other.isEmpty()) {
+      return false;
+    }
+    return this.minx==other.minx && this.maxx==other.maxx && this.miny==other.miny && this.maxy==other.maxy;
+  };
+
+  jsts.geom.AxisParallelRectangle.prototype.compareToSameClass = function(o) {
+	  return this.minx==other.minx && this.maxx==other.maxx && this.miny==other.miny && this.maxy==other.maxy;
+  };
+
+  jsts.geom.AxisParallelRectangle.prototype.apply = function(filter) {
+	  throw new Error("not implemented");
+  };
+
+  jsts.geom.AxisParallelRectangle.prototype.apply2 = function(filter) {
+	  throw new Error("not implemented");
+  };
+
+  /**
+   * Creates and returns a full copy of this {@link Polygon} object. (including
+   * all coordinates contained by it).
+   *
+   * @return a clone of this instance.
+   */
+  jsts.geom.AxisParallelRectangle.prototype.clone = function() {
+    return new jsts.geom.AxisParallelRectangle(this.minx, this.miny, this.maxx, this.maxy, this.factory);
+  };
+
+  jsts.geom.AxisParallelRectangle.prototype.normalize = function() {
+  };
+
+  jsts.geom.AxisParallelRectangle.prototype.intersects = function(other) {
+	  if (other instanceof jsts.geom.AxisParallelRectangle) {
+		  return (
+				  this.maxx>=other.minx && other.maxx>=this.minx &&
+				  this.maxy>=other.miny && other.maxy>=this.miny
+				 )
+	  } else {
+		  throw new Error("not implemented for "+other);
+	  }
+  }
+
+  var Location = jsts.geom.Location;
+
+//  jsts.geom.AxisParallelRectangle.prototype.relate2 = function(other) {
+//	var im = new jsts.geom.IntersectionMatrix();
+//	var II = (
+//			  this.maxx>other.minx && other.maxx>this.minx &&
+//			  this.maxy>other.miny && other.maxy>this.miny
+//			 );
+//    im.setAtLeast('FFFFFFFFF');
+//	im.set(Location.INTERIOR, Location.INTERIOR, II? "2": "F");
+//	return im;
+//  }
+
+  jsts.geom.AxisParallelRectangle.prototype.overlaps = function(other) {
+	  if (other instanceof jsts.geom.AxisParallelRectangle) {
+		  return !this.interiorDisjoint(other) && !this.contains(other) && !other.contains(this);
+	  } else {
+		  throw new Error("not implemented for "+other);
+	  }
+  }
+
+  jsts.geom.AxisParallelRectangle.prototype.interiorDisjoint = function(other) {
+	  if (other instanceof jsts.geom.AxisParallelRectangle) {
+		  return (
+				  this.maxx<=other.minx || other.maxx<=this.minx ||
+				  this.maxy<=other.miny || other.maxy<=this.miny
+				 );
+	  } else {
+		  throw new Error("not implemented for "+other);
+	  }
+  }
+
+  jsts.geom.AxisParallelRectangle.prototype.contains = function(other) {
+    var x,y;
+    if (other.x)
+      x = other.x;
+    if (other.y)
+      y = other.y;
+    if (other.coordinate) {
+      x = other.coordinate.x;
+      y = other.coordinate.y;
+    }
+    if (other.getCoordinate) {
+      x = other.getCoordinate().x;
+      y = other.getCoordinate().y;
+    }
+
+    if (x!=undefined && y!=undefined) {
+      return (
+		  this.minx<x && x<this.maxx &&
+		  this.miny<y && y<this.maxy
+		 )
+    } else {
+      console.dir(other);
+      throw new Error("AxisParallelRectangle.contains is not implemented for "+typeof other);
+    }
+  }
+
+  /**
+   * @return {String} String representation of Polygon type.
+   */
+  jsts.geom.AxisParallelRectangle.prototype.getGeometryType = function() {
+    return 'Polygon';
+  };
+
+  /**
+   * @return {String} String representation of Polygon type.
+   */
+  jsts.geom.AxisParallelRectangle.prototype.toString = function() {
+    return 'RECTANGLE(['+this.minx+","+this.maxx+"]x["+this.miny+","+this.maxy+"])";
+  };
+
+  jsts.geom.AxisParallelRectangle.prototype.CLASS_NAME = 'jsts.geom.AxisParallelRectangle';
+
+
+  /**
+   * Constructs a <code>Polygon</code> that is an axis-parallel rectangle with the given x and y values.
+   *
+   * Can be called either with 4 parameters (minx,miny, maxx,maxy)
+   * or with a single parameter with 4 fields (minx,miny, maxx,maxy).
+   */
+  jsts.geom.GeometryFactory.prototype.createAxisParallelRectangle = function(minx,miny, maxx,maxy) {
+	if (arguments.length==1) {
+		var envelope = minx;
+		return new jsts.geom.AxisParallelRectangle(envelope.minx, envelope.miny, envelope.maxx, envelope.maxy, this);
+	} else if (arguments.length==4) {
+		return new jsts.geom.AxisParallelRectangle(minx,miny, maxx,maxy, this);
+	} else {
+		throw new Error("createAxisParallelRectangle expected 1 or 4 arguments, but found "+arguments.length)
+	}
+  };
+
+}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{}],4:[function(require,module,exports){
+/**
+ * Add some extensions to the doubly-linked list of the JSClass library.
+ */
+
+var DoublyLinkedList = require('jsclass/src/linked_list').LinkedList.Doubly.Circular;
+
+DoublyLinkedList.prototype.toString = function() {
+		var s = "";
+		this.forEach(function(node, i) {
+			var sfield = "";
+			for (var field in node) {
+				if (node.hasOwnProperty(field) && field!='prev' && field !='next' && field !='list') {
+					if (sfield) sfield+=",";
+					sfield += field+":"+node[field];
+				}
+			}
+
+			if (s) s+=",\n ";
+			s +="{"+sfield+"}"
+		});
+		return "["+s+"]";
+}
+
+DoublyLinkedList.prototype.pluck = function(field) {
+		var values = [];
+		this.forEach(function(node) {
+			values.push(node[field]);
+		})
+		return values;
+}
+
+DoublyLinkedList.prototype.isEmpty = function() {
+		return this.length == 0; 
+}
+
+},{"jsclass/src/linked_list":39}],5:[function(require,module,exports){
+(function (global){
+/**
+ * Calculate a largest subset of interior-disjoint shapes from a given set of candidates.
+ *
+ * Asynchronous version, with option to interrupt.
+ *
+ * @note For a synchronous function, see MaxDisjointSetSync.js
+ *
+ * CREDITS:
+ * * barry-johnson: http://stackoverflow.com/a/22593680/827927
+ * * vkurchatkin:   http://stackoverflow.com/a/22604420/827927
+ *
+ * @author Erel Segal-Halevi
+ * @since 2014-03
+ */
+
+var Combinatorics = require('js-combinatorics');
+var _ = require('underscore');
+
+var jsts = global.jsts;
+require("./intersection-cache");
+require("./partition-utils");
+var async = require("async");
+
+var TRACE_PERFORMANCE = false;
+
+
+
+/*--- Main Algorithm ---*/
+
+/**
+ * Calculate a largest subset of non-intersecting shapes from a given set of candidates.
+ * @param candidates a set of shapes (geometries).
+ * @param stopAtCount - After finding this number of disjoint shapes, don't look further (default: infinity)
+ * @return a subset of these shapes, that are guaranteed to be pairwise disjoint.
+ *
+ * @note uses a simple exact divide-and-conquer algorithm that can be exponential in the worst case.
+ * For more complicated algorithms that are provably more efficient (in theory) see: https://en.wikipedia.org/wiki/Maximum_disjoint_set
+ */
+jsts.algorithm.MaximumDisjointSetSolver = function(candidates, stopAtCount) {
+	if (TRACE_PERFORMANCE) var startTime = new Date();
+	candidates = jsts.algorithm.prepareDisjointCache(jsts.algorithm.prepareShapesToPartition(candidates));
+	if (TRACE_PERFORMANCE) 	console.log("Preparation time = "+(new Date()-startTime)+" [ms]");
+
+	this.candidates = candidates;
+	this.stopAtCount = stopAtCount? stopAtCount: Infinity;
+	this.interrupted = false;
+}
+
+jsts.algorithm.MaximumDisjointSetSolver.prototype.interrupt = function(){
+    this.interrupted = true;
+};
+
+
+/**
+ * Find a largest interior-disjoint set of rectangles, from the given set of candidates.
+ *
+ * @param callback(err,result) - asynchronously called with the result.
+ *
+ * @author Erel Segal-Halevi
+ * @since 2014-01
+ */
+jsts.algorithm.MaximumDisjointSetSolver.prototype.solve = function (callback) {
+	if (TRACE_PERFORMANCE) this.numRecursiveCalls = 0;
+	this.maximumDisjointSetRec(this.candidates, this.stopAtCount, callback);
+	if (TRACE_PERFORMANCE) console.log("numRecursiveCalls="+this.numRecursiveCalls);
+}
+
+
+/*--- Recursive functions ---*/
+
+jsts.algorithm.MaximumDisjointSetSolver.prototype.maximumDisjointSetRec = function(candidates, stopAtCount, callback) {
+	if (TRACE_PERFORMANCE) ++numRecursiveCalls;
+	if (candidates.length<=1)
+		return async.nextTick(callback.bind(null,null,candidates));
+	if (this.interrupted)
+		return async.nextTick(callback.bind(null,null,[]));
+
+	var partition = jsts.algorithm.partitionShapes(candidates);
+			//	partition[0] - on one side of separator;
+			//	partition[1] - intersected by separator;
+			//	partition[2] - on the other side of separator (- guaranteed to be disjoint from rectangles in partition[0]);
+	var t = new Date();
+	var allSubsetsOfIntersectedShapes = Combinatorics.power(partition[1]);
+
+	var self = this;
+	var currentMaxDisjointSet = [];
+	var subsetOfIntersectedShapes = null;
+	async.whilst(
+			function loopCondition() {
+				if (self.interrupted) return false;
+				if (currentMaxDisjointSet.length >= stopAtCount) return false;
+				subsetOfIntersectedShapes = allSubsetsOfIntersectedShapes.next();
+				if (!subsetOfIntersectedShapes) return false;
+				return true;
+			},
+			function loopBody(loopIterationFinished) {
+				if (!jsts.algorithm.arePairwiseDisjointByCache(subsetOfIntersectedShapes))
+					return async.nextTick(loopIterationFinished);
+
+				var candidatesOnSideOne = jsts.algorithm.calcDisjointByCache(partition[0], subsetOfIntersectedShapes);
+				var candidatesOnSideTwo = jsts.algorithm.calcDisjointByCache(partition[2], subsetOfIntersectedShapes);
+
+				// Make sure candidatesOnSideOne is larger than candidatesOnSideTwo - to enable heuristics
+				if (candidatesOnSideOne.length<candidatesOnSideTwo.length) {
+					var temp = candidatesOnSideOne;
+					candidatesOnSideOne = candidatesOnSideTwo;
+					candidatesOnSideTwo = temp;
+				}
+
+				// branch-and-bound (advice by D.W.):
+				var upperBoundOnNewDisjointSetSize = candidatesOnSideOne.length+candidatesOnSideTwo.length+subsetOfIntersectedShapes.length;
+				if (upperBoundOnNewDisjointSetSize<=currentMaxDisjointSet.length)
+					return async.nextTick(loopIterationFinished);
+
+				async.parallel(
+						[self.maximumDisjointSetRec.bind(self, candidatesOnSideOne, stopAtCount),
+						 self.maximumDisjointSetRec.bind(self, candidatesOnSideTwo, stopAtCount)],
+						function processResults(err, results) {
+							if (err) {
+								console.dir(err);
+								throw new Error(err);
+							}
+							var maxDisjointSetOnSideOne = results[0];
+							var maxDisjointSetOnSideTwo = results[1];
+							if (!maxDisjointSetOnSideOne || !maxDisjointSetOnSideTwo) {
+								console.dir(results);
+								throw new Error("undefined results");
+							}
+							var newDisjointSet = maxDisjointSetOnSideOne.concat(maxDisjointSetOnSideTwo).concat(subsetOfIntersectedShapes);
+							if (newDisjointSet.length>currentMaxDisjointSet.length)
+								currentMaxDisjointSet = newDisjointSet;
+							async.nextTick(loopIterationFinished);
+						}
+				)
+			}, // end function loopBody
+			function loopEnd(err) {
+				callback(err, currentMaxDisjointSet);
+			}
+	); // end of async.whilst
+} // end of function maximumDisjointSetRec
+
+}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{"./intersection-cache":19,"./partition-utils":21,"async":31,"js-combinatorics":33,"underscore":58}],6:[function(require,module,exports){
+(function (global){
+/**
+ * Calculate a largest subset of interior-disjoint shapes from a given set of candidates.
+ *
+ * Synchronous version.
+ *
+ * @note For an asynchronous version that can be interrupted, see MaxDisjointSetAsync.js
+ *
+ * CREDITS:
+ * * D.W.: http://cs.stackexchange.com/a/20140/1342
+ *
+ * @author Erel Segal-Halevi
+ * @since 2014-02
+ */
+
+var Combinatorics = require('js-combinatorics');
+var _ = require('underscore');
+
+var jsts = global.jsts
+require("./intersection-cache");
+require("./partition-utils");
+
+var TRACE_PERFORMANCE = false;
+var numRecursiveCalls;// a measure of performance
+
+
+/*--- Main Algorithm ---*/
+
+/**
+ * Calculate a largest subset of non-intersecting shapes from a given set of candidates.
+ * @param candidates a set of shapes (geometries).
+ * @param stopAtCount - After finding this number of disjoint shapes, don't look further (default: infinity)
+ * @return a subset of these shapes, that are guaranteed to be pairwise disjoint.
+ */
+jsts.algorithm.maximumDisjointSet = function(candidates, stopAtCount) {
+	if (!stopAtCount) stopAtCount = Infinity;
+
+	if (TRACE_PERFORMANCE) var startTime = new Date();
+	// console.dir(candidates);
+	candidates = jsts.algorithm.prepareDisjointCache(jsts.algorithm.prepareShapesToPartition(candidates));  // in partition-utils.js
+	if (TRACE_PERFORMANCE) 	console.log("Preparation time = "+(new Date()-startTime)+" [ms]");
+	// console.dir(candidates);
+
+	if (TRACE_PERFORMANCE) numRecursiveCalls = 0;
+	var maxDisjointSet = maximumDisjointSetRec(candidates,stopAtCount);
+	if (TRACE_PERFORMANCE) console.log("numRecursiveCalls="+numRecursiveCalls);
+	return maxDisjointSet;
+}
+
+
+
+/*--- Recursive function ---*/
+
+/**
+ * Find a largest interior-disjoint set of shapes, from the given set of candidates.
+ *
+ * @param candidates an array of candidate rectangles from which to select the MDS.
+ * Each rectangle should contain the fields: minx, maxx, miny, maxy.
+ *
+ * @return a largest set of rectangles that do not interior-intersect.
+ *
+ * @note uses a simple exact divide-and-conquer algorithm that can be exponential in the worst case.
+ * For more complicated algorithms that are provably more efficient (in theory) see: https://en.wikipedia.org/wiki/Maximum_disjoint_set
+ *
+ * @author Erel Segal-Halevi
+ * @since 2014-01
+ */
+function maximumDisjointSetRec(candidates,stopAtCount) {
+	if (TRACE_PERFORMANCE) ++numRecursiveCalls;
+	if (candidates.length<=1)
+		return candidates;
+
+	var currentMaxDisjointSet = [];
+	var partition = jsts.algorithm.partitionShapes(candidates);
+			//	partition[0] - on one side of separator;
+			//	partition[1] - intersected by separator;
+			//	partition[2] - on the other side of separator (- guaranteed to be disjoint from rectangles in partition[0]);
+
+	var allSubsetsOfIntersectedShapes = Combinatorics.power(partition[1]);
+	var subsetOfIntersectedShapes;
+	while (subsetOfIntersectedShapes = allSubsetsOfIntersectedShapes.next()) {
+//		console.log("subsetOfIntersectedShapes="+subsetOfIntersectedShapes)
+		if (!jsts.algorithm.arePairwiseDisjointByCache(subsetOfIntersectedShapes))
+			continue;
+
+		var candidatesOnSideOne = jsts.algorithm.calcDisjointByCache(partition[0], subsetOfIntersectedShapes);
+		var candidatesOnSideTwo = jsts.algorithm.calcDisjointByCache(partition[2], subsetOfIntersectedShapes);
+
+		// Make sure candidatesOnSideOne is larger than candidatesOnSideTwo - to enable heuristics
+		if (candidatesOnSideOne.length<candidatesOnSideTwo.length) {
+			var temp = candidatesOnSideOne;
+			candidatesOnSideOne = candidatesOnSideTwo;
+			candidatesOnSideTwo = temp;
+		}
+
+		// branch-and-bound (advice by D.W.):
+		var upperBoundOnNewDisjointSetSize = candidatesOnSideOne.length+candidatesOnSideTwo.length+subsetOfIntersectedShapes.length;
+		if (upperBoundOnNewDisjointSetSize<=currentMaxDisjointSet.length)
+			continue;
+
+		var maxDisjointSetOnSideOne = maximumDisjointSetRec(candidatesOnSideOne, stopAtCount);
+		var upperBoundOnNewDisjointSetSize = maxDisjointSetOnSideOne.length+candidatesOnSideTwo.length+subsetOfIntersectedShapes.length;
+		if (upperBoundOnNewDisjointSetSize<=currentMaxDisjointSet.length)
+			continue;
+
+		var maxDisjointSetOnSideTwo = maximumDisjointSetRec(candidatesOnSideTwo, stopAtCount-maxDisjointSetOnSideOne.length);
+
+		var newDisjointSet = maxDisjointSetOnSideOne.concat(maxDisjointSetOnSideTwo).concat(subsetOfIntersectedShapes);
+		if (newDisjointSet.length > currentMaxDisjointSet.length)
+			currentMaxDisjointSet = newDisjointSet;
+		if (currentMaxDisjointSet.length >= stopAtCount)
+			break;
+	}; // end of while loop
+	return currentMaxDisjointSet;
+}
+
+}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{"./intersection-cache":19,"./partition-utils":21,"js-combinatorics":33,"underscore":58}],7:[function(require,module,exports){
+(function (global){
+/**
+ * Calculate the minimum square covering of a SimpleRectilinearPolygon.
+ * Based on Bar-Yehuda, R. and Ben-Hanoch, E. (1996). A linear-time algorithm for covering simple polygons with similar rectangles. International Journal of Computational Geometry & Applications, 6.01:79-102.
+ * 	http://www.citeulike.org/user/erelsegal-halevi/article/12475038
+ *
+ *
+ * USAGE EXAMPLE:
+ *
+ * var jsts = require("computational-geometry");
+ * ...
+ * var polygonXY = [0,0, 15,5, 20,20];
+ * console.dir(jsts.minSquareCovering(polygonXY));
+ *
+ *
+ * @author Erel Segal-Halevi
+ * @since 2014-09
+ */
+
+
+
+var jsts = global.jsts
+require("./SimpleRectilinearPolygon");
+require("./Side");
+
+var LinkedList = require('jsclass/src/linked_list').LinkedList;
+var ListNode = LinkedList.Node;
+var DoublyLinkedList = LinkedList.Doubly.Circular;
+require('./DoublyLinkedList');
+
+var almostEqual = require("almost-equal")
+
+function TRACE(s) {
+//	console.log(s);
+};
+
+
+var error = function(msg) {throw new Error(msg);}
+
+Math.compare = function(a,b) { return (a<b)-(a>b); }
+
+
+/*-************ SEGMENT *******************-*/
+
+/**
+ * Construct a segment between two corners of a rectilinear polygon
+ */
+var Segment = function(c0, c1) {
+	this.c0 = c0;
+	this.c1 = c1;
+	this.direction = (
+		c0.y<c1.y? jsts.Side.North:
+		c0.y>c1.y? jsts.Side.South:
+		c0.x<c1.x? jsts.Side.East:
+		c0.x>c1.x? jsts.Side.West:
+		error("cannot detect the direction: "+c0.toString()+", "+c1.toString())
+	);
+
+	this.coveringSquares = new DoublyLinkedList();	 // All squares s selected for the cover and having the following properties:
+		// a. s intersects the segment. (Note: every intersection of a square with the segment is on an original concave point???)
+		// b. The two edges of s which are orthogonal to the segment are exposed.
+		// c. There is a point in the polygon which is covered only by s (and not by any other square selected so far).
+		// The squares for each segment are kept sorted by their appearance order.
+}
+
+Segment.prototype.initializeProjectionList = function() {
+	this.projectionList = new DoublyLinkedList();	 // All vertices visible to this segment; filled during initialization of polygon
+}
+
+// this is a function because the corners change!
+Segment.prototype.length = function() {
+	return Math.abs(this.c0.x-this.c1.x)+Math.abs(this.c0.y-this.c1.y);
+}
+
+Segment.prototype.addVisibleCorner = function(corner)	 {
+	var node = new ListNode(corner);   // we need a node because the same corner participates in two different projection lists - positive and negative
+	this.projectionList.push(node);
+	return node;
+}
+
+Segment.prototype.isVertical = function()	 {	return jsts.isVertical(this.direction);	}
+Segment.prototype.isHorizontal = function() {	return jsts.isHorizontal(this.direction);	}
+
+Segment.prototype.isKnob = function() {
+	return this.c0.isConvex && this.c1.isConvex;
+}
+
+Segment.prototype.xSign = function() {	return Math.compare(this.c0.x,this.c1.x);	}
+Segment.prototype.ySign = function() {	return Math.compare(this.c0.y,this.c1.y);	}
+
+Segment.prototype.setX = function(x) {
+	if (!this.isVertical()) throw new Error("Set X is valid only for a vertical knob");
+	this.c0.x = this.c1.x = x;
+}
+
+Segment.prototype.setY = function(y) {
+	if (!this.isHorizontal()) throw new Error("Set Y is valid only for a horizontal knob");
+	this.c0.y = this.c1.y = y;
+}
+
+Segment.prototype.getX = function() { return  this.isVertical()? this.c0.x: "["+this.c0.x+","+this.c1.x+"]"; }
+Segment.prototype.getY = function() { return  this.isHorizontal()? this.c0.y: "["+this.c0.y+","+this.c1.y+"]"; }
+
+Segment.prototype.yContains = function(point) {
+	return 	(this.c0.y >= point.y && point.y >= this.c1.y) ||
+			(this.c0.y <= point.y && point.y <= this.c1.y);
+}
+
+Segment.prototype.xContains = function(point) {
+	return 	(this.c0.x >= point.x && point.x >= this.c1.x) ||
+			(this.c0.x <= point.x && point.x <= this.c1.x);
+}
+
+Segment.prototype.contains = function(point) {
+	if (this.isVertical())
+		return this.c0.x == point.x && this.yContains(point);
+	else
+		return this.c0.y == point.y && this.xContains(point);
+}
+
+Segment.prototype.isVerticalEastOf = function(point) {
+	return (this.c0.x==this.c1.x) && (this.c0.x > point.x) && this.yContains(point);	}
+Segment.prototype.isVerticalWestOf = function(point) {
+	return (this.c0.x==this.c1.x) && (this.c0.x < point.x) && this.yContains(point);	}
+Segment.prototype.isHorizontalNorthOf = function(point) {
+	return (this.c0.y==this.c1.y) && (this.c0.y > point.y) && this.xContains(point);	}
+Segment.prototype.isHorizontalSouthOf = function(point) {
+	return (this.c0.y==this.c1.y) && (this.c0.y < point.y) && this.xContains(point);	}
+
+Segment.prototype.isInDirectionOf = function(direction,point) {
+	switch (direction) {
+	case jsts.Side.East: return this.isVerticalEastOf(point);
+	case jsts.Side.West: return this.isVerticalWestOf(point);
+	case jsts.Side.South: return this.isHorizontalSouthOf(point);
+	case jsts.Side.North: return this.isHorizontalNorthOf(point);
+	}
+}
+
+Segment.prototype.isInDirectionOfSegment = function(direction,segment) {
+	switch (direction) {
+	case jsts.Side.East: return this.c0.x>segment.c0.x;  // vertical
+	case jsts.Side.West: return this.c0.x<segment.c0.x;  // vertical
+	case jsts.Side.North: return this.c0.y>segment.c0.y;  // horizontal
+	case jsts.Side.South: return this.c0.y<segment.c0.y;  // horizontal
+	}
+}
+
+Segment.prototype.distanceToCorner = function(corner) {
+	return (this.isVertical()?
+			Math.abs(corner.x-this.c0.x):
+			Math.abs(corner.y-this.c0.y));
+}
+
+Segment.prototype.distanceToNearestConcaveCorner = function() {
+	var nearestSoFar = Infinity;
+	this.projectionList.forEach(function(node) {
+		var corner = node.data;
+		var distance = this.distanceToCorner(corner);
+		if (distance<nearestSoFar)
+			nearestSoFar = distance;
+	}, this);
+	return nearestSoFar;
+}
+
+/**
+ * @return the distance to the nearest side of the polygon.
+ * relevant mainly for knobs
+ */
+Segment.prototype.distanceToNearestBorder = function() {
+	return Math.min(
+		this.distanceToNearestConcaveCorner(),
+		Math.min(
+			this.c0.distanceToNearestSegment(jsts.inverseSide(this.prev.direction)),
+			this.c1.distanceToNearestSegment(this.next.direction)
+		)
+	);
+}
+
+Segment.prototype.signOfPolygonInterior = function() {
+	if (this.isVertical())
+		return this.c0.signOfPolygonInteriorX();
+	else
+		return this.c0.signOfPolygonInteriorY();
+}
+
+/**
+ * @return the square adjacent to this segment which is contained in the polygon.
+ */
+Segment.prototype.getAdjacentSquareInPolygon = function() {
+	var x0, x1, y0, y1;
+	if (this.isVertical()) {
+		x0 = this.c0.x;
+		x1 = x0 + this.signOfPolygonInterior() * this.length();
+		y0 = this.c0.y;
+		y1 = this.c1.y;
+	} else {
+		x0 = this.c0.x;
+		x1 = this.c1.x;
+		y0 = this.c0.y;
+		y1 = y0 + this.signOfPolygonInterior() * this.length();
+	}
+	return {
+		minx: Math.min(x0,x1),
+		maxx: Math.max(x0,x1),
+		miny: Math.min(y0,y1),
+		maxy: Math.max(y0,y1),
+	}
+}
+
+Segment.prototype.isAxisParallel = function() {
+	return (this.c0.x==this.c1.x || this.c0.y==this.c1.y);
+}
+
+Segment.prototype.toString = function() {
+	if (this.prev==null)
+		console.warn("this.prev is null!");
+	if (this.next==null)
+		console.warn("this.next is null!");
+	return "["+
+		this.c0+" - "+this.c1+
+		" , len="+this.length()+
+		" , dir="+this.direction+
+		(this.prev && this.next? ", tocorner="+this.distanceToNearestConcaveCorner()+", toborder="+this.distanceToNearestBorder(): "")+
+		(this.knobCount? ", knobCount="+this.knobCount: "") +
+		"]";
+}
+
+
+
+
+
+/*-************ CORNER *******************-*/
+
+/**
+ * Construct a corner structure for a given vertex
+ */
+var Corner = function(point) {
+	this.x = point.x;
+	this.y = point.y;
+}
+
+/**
+ * Set the two segments that meet at the corner, and calculate the turn direction
+ */
+Corner.prototype.setIncomingSegment = function(s0) {
+	if (!s0)	throw new Error("s0 is empty")
+	this.s0 = s0;
+}
+
+/**
+ * Set the two segments that meet at the corner, and calculate the turn direction
+ */
+Corner.prototype.setOutgoingSegment = function(s1) {
+	if (!s1)	throw new Error("s1 is empty")
+	this.s1 = s1;
+}
+
+
+Corner.prototype.calculateConvexity = function(polygonTurnDirection) {
+	this.isConvex = (this.turnDirection() == polygonTurnDirection);
+}
+
+Corner.prototype.turnDirection = function() {
+	if (!this.s0)	throw new Error("s0 is empty")
+	if (!this.s1)	throw new Error("s1 is empty")
+	return jsts.turn(this.s0.direction, this.s1.direction); // left=-1, right=1
+}
+
+/**
+ * @return the direction of the polygon interior relative to this (convex) corner.
+ * The direction is returned as a string: SW, SE, NW or NE.
+ */
+Corner.prototype.directionOfPolygonInterior = function() {
+	var northSouth, eastWest;
+
+	var dir0 = jsts.sideToLetter[jsts.inverseSide(this.s0.direction)];
+	var dir1 = jsts.sideToLetter[this.s1.direction];
+
+	if (this.s0.isVertical())
+		return dir0+dir1;
+	else
+		return dir1+dir0;
+}
+
+Corner.prototype.verticalDirection = function() {
+	return this.s0.isVertical()? jsts.inverseSide(this.s0.direction): this.s1.direction;
+}
+
+Corner.prototype.horizontalDirection = function() {
+	return this.s0.isHorizontal()? jsts.inverseSide(this.s0.direction): this.s1.direction;
+}
+
+Corner.prototype.signOfPolygonInteriorX = function() {
+	return ((this.horizontalDirection()==jsts.Side.East)==this.isConvex)? 1: -1
+}
+
+Corner.prototype.signOfPolygonInteriorY = function() {
+	return ((this.verticalDirection()==jsts.Side.North)==this.isConvex)? 1: -1
+}
+
+Corner.prototype.distanceToSegment = function(segment) {
+	return segment.distanceToCorner(this);
+}
+
+/**
+ * Set the two segments that see this (concave) corner, and remember our location in their projection lists.
+ */
+Corner.prototype.setVisibilityInfo = function(positiveVisibilitySegment,negativeVisibilitySegment) {
+	if (this.isConvex)
+		throw new Error("setVisibilityInfo should be called only for concave corners")
+
+	this.positiveVisibilitySegment = positiveVisibilitySegment; // The segment visible to us in the direction of the incoming segment (s0). It contains the point p+.
+	this.positiveVisibilityNode = positiveVisibilitySegment.addVisibleCorner(this);  // pointer to the node, in the list of positiveVisibilitySegment, which contains us.
+
+	this.negativeVisibilitySegment = negativeVisibilitySegment; // The segment visible to us in the opposite direction to the outgoing segment (s1).  It contains the point p-.
+	this.negativeVisibilityNode = negativeVisibilitySegment.addVisibleCorner(this);  // pointer to the node, in the list of negativeVisibilitySegment, which contains us.
+}
+
+
+// remove this corner from ALL lists it participates in:
+Corner.prototype.remove = function() {
+	this.list.remove(this);
+	if (this.positiveVisibilityNode)
+		this.positiveVisibilityNode.list.remove(this.positiveVisibilityNode);
+	if (this.negativeVisibilityNode)
+		this.negativeVisibilityNode.list.remove(this.negativeVisibilityNode);
+}
+
+Corner.prototype.distanceToNearestSegment = function(direction) {
+	if (this.isConvex) {
+		if (direction==jsts.inverseSide(this.s0.direction)) {
+			var knobLength = this.s0.length();
+			var nextCorner = this.s0.c0;
+		} else if (direction==this.s1.direction) {
+			var knobLength = this.s1.length();
+			var nextCorner = this.s1.c1;
+		} else {
+			return 0;
+		}
+		return knobLength +
+			(nextCorner.isConvex? 0: nextCorner.distanceToNearestSegment(direction));
+	} else {  // concave corner - use the visibility information:
+		if (direction==this.s0.direction) {
+			if (!this.positiveVisibilitySegment) throw new Error("missing positive visibility information");
+			return this.distanceToSegment(this.positiveVisibilitySegment);
+		}
+		if (direction==jsts.inverseSide(this.s1.direction)) {
+			if (!this.negativeVisibilitySegment) throw new Error("missing negative visibility information");
+			return this.distanceToSegment(this.negativeVisibilitySegment);
+		}
+		return 0;
+	}
+}
+
+Corner.prototype.toString = function() {
+	return "("+this.x+","+this.y+"; "+this.turnDirection()+","+(this.isConvex?"convex":"concave")+")";
+}
+
+
+
+/*-************ MinSquareCoveringData Structure *******************-*/
+
+/**
+ * thePolygon - a SimpleRectilinearPolygon
+ */
+var MinSquareCoveringData = jsts.algorithm.MinSquareCoveringData = function(thePolygon) {
+	/* Clone the sequence of corners in order to add more information: */
+	var points = thePolygon.getCoordinates();
+	//console.log("typeof points="+typeof points)
+	//console.log("points.length="+points.length)
+	var corners = new DoublyLinkedList();
+	for (var i=0; i<points.length-1; ++i)
+		corners.push(new Corner(points[i]));  //points[i] should have a field "x" and a field "y".
+	this.corners = corners;
+
+	/* Calculate the sequence of segments and the turn directions of the corners: */
+	var segments = new DoublyLinkedList();
+	var previousSegment = null;
+	var totalTurn = 0;
+	corners.forEach(function(corner) {
+		var segment = new Segment(corner, corner.next);
+		segments.push(segment);
+		if (previousSegment) {
+			corner.setIncomingSegment(previousSegment)
+			corner.setOutgoingSegment(segment);
+			totalTurn += corner.turnDirection();
+		}
+		previousSegment = segment;
+	}, this);
+	this.segments = segments;
+	corners.first.setIncomingSegment(segments.last)
+	corners.first.setOutgoingSegment(segments.first);
+	totalTurn += corners.first.turnDirection();
+	this.turnDirection = jsts.turnDirection(totalTurn);
+	this.calculateConvexityAndVisibility();
+
+	this.factory = thePolygon.factory;
+}
+
+
+MinSquareCoveringData.prototype.isEmpty = function() {
+	return this.corners.isEmpty();
+}
+
+MinSquareCoveringData.prototype.calculateConvexityAndVisibility = function() {
+	/* Decide whether the corners are convex or concave, and calculate visibility information: */
+
+	TRACE("calculateConvexityAndVisibility: "+this.corners.length+" corners")
+	this.segments.forEach(function(segment) {
+		segment.initializeProjectionList();
+	});
+	this.corners.forEach(function(corner) {
+		corner.calculateConvexity(this.turnDirection);
+		if (!corner.isConvex) {   // concave corner - calculate visibility information:
+			var positiveVisibilitySegment = this.findClosestSegment(corner.s0.direction, corner);
+			if (!positiveVisibilitySegment) throw new Error("findClosestSegment returned null for positive visibility of "+corner.toString());
+			var negativeVisibilitySegment = this.findClosestSegment(jsts.inverseSide(corner.s1.direction), corner);
+			if (!negativeVisibilitySegment) throw new Error("findClosestSegment returned null for negative visibility of "+corner.toString());
+			corner.setVisibilityInfo(positiveVisibilitySegment,negativeVisibilitySegment);
+		}
+	}, this);
+	this.checkValid();
+}
+
+MinSquareCoveringData.prototype.findClosestSegment = function(direction, point) {
+//	console.log("fcs "+point.toString())
+	var closestSoFar = null;
+	this.segments.forEach(function(segment) {
+//		console.log("\tfcs "+point.toString()+" "+segment.isInDirectionOf(direction,point))
+		if (segment && segment.isInDirectionOf(direction,point)) {
+			if (!closestSoFar || closestSoFar.isInDirectionOfSegment(direction,segment))
+				closestSoFar = segment;
+		}
+	});
+//	console.log("\tfcs "+point.toString()+" end");
+//	if (!closestSoFar)	throw new Error("findClosestSegment returned null")
+	return closestSoFar;
+}
+
+/**
+ * @param point {x,y}
+ * @return true if the point is in the interior of the polygon.
+ * Uses the "even-odd rule" algorithm: https://en.wikipedia.org/wiki/Point_in_polygon
+ */
+MinSquareCoveringData.prototype.contains = function(point) {
+	var intersections = 0;
+	var onBoundary = false;
+	this.segments.forEach(function(segment) {
+		//console.dir(segment.c0+" - "+segment.c1);
+		if (segment.contains(point))
+			onBoundary = true; // point is on the boundary.
+		else if (segment.isVerticalEastOf(point))
+			intersections++;
+	});
+	if (onBoundary) return false;
+	else return (intersections%2==1); // odd = internal; even = external
+}
+
+
+
+
+
+Segment.prototype.hasContinuator = function() {
+	if (!this.isKnob())
+		return false;
+	if (this.distanceToNearestBorder() < this.length())
+		return false;
+//	if (this.distanceToNearestBorder() < this.length())
+//		return false;
+	return true;
+}
+
+/**
+ * Decide if a given knob-chain supports a continuator.
+ * @param knobCount (int) number of knobs in chain: 1, 2, 3 or 4.
+ * @param knobStartingChain, knobEndingChain (Segment)
+ *
+ */
+function hasContinuator(knobCount, knobStartingChain, knobEndingChain) {
+	var knobLength = knobStartingChain.length();
+	var beforeChain = knobStartingChain.prev;
+	var afterChain = knobEndingChain.next;
+	switch (knobCount) {
+	case 4:
+		return true;
+	case 3:
+		var Aprev = beforeChain.c0;
+		var Dnext = afterChain.c1;
+		//console.log("Aprev:"+Aprev+" Dnext:"+Dnext);
+		var Aprev_sees_Dnext = (!Aprev.isConvex && !Dnext.isConvex && Dnext.positiveVisibilitySegment.c1==Aprev);
+		return Aprev_sees_Dnext;
+	case 2:
+		var A = knobStartingChain.c0;
+		var Aprev = beforeChain.c0;
+		var C = knobEndingChain.c1;
+		var Cnext = afterChain.c1;
+
+		var AAprev = knobStartingChain.prev.length();
+		var A_Aprev = Aprev.isConvex? AAprev: A.distanceToSegment(Aprev.negativeVisibilitySegment);
+		var CCnext = knobEndingChain.next.length();
+		var C_Cnext = Cnext.isConvex? CCnext: C.distanceToSegment(Cnext.positiveVisibilitySegment);
+
+		//console.log("Aprev:"+Aprev+" Cnext:"+Cnext+" AAprev:"+AAprev+" A_Aprev:"+A_Aprev+" CCnext:"+CCnext+" C_Cnext:"+C_Cnext);
+
+		return (A_Aprev>knobLength && C_Cnext>knobLength) ||
+		                (AAprev>=knobLength && C_Cnext==knobLength) ||
+		                (A_Aprev==knobLength && CCnext>=knobLength);
+	case 1:
+		return (knobStartingChain.distanceToNearestBorder() > knobLength+almostEqual.FLT_EPSILON);
+	default:
+		throw new Error("Invalid knobCount: "+knobCount);
+	}
+}
+
+/**
+ * @return the first segment, unless it is a knob in the middle of a knob-chain, in which case it returns the first knob in that chain.
+ */
+MinSquareCoveringData.prototype.firstInChain = function() {
+	var segment = this.segments.first;
+
+	if (segment.isKnob()) {
+		var knobLength = segment.length();
+		// Make sure "segment" is the first in a knob chain:
+		while (almostEqual(segment.prev.length(),knobLength,0,0.001) &&
+				segment.prev.isKnob() &&
+				segment.prev!=this.segments.first)  {
+			segment = segment.prev;
+		}
+	}
+
+	return segment;
+}
+
+
+/**
+ * @return the first knob in a chain supporting a continuator.
+ */
+MinSquareCoveringData.prototype.findSegmentWithContinuator = function() {
+	TRACE("\nfindSegmentWithContinuator: "+this.segments.length+" segments")
+
+	var firstSegment = this.firstInChain();
+	var segment = firstSegment;
+	for (;;) {
+		if (segment.isKnob()) {
+			var knobStartingChain = segment;
+			var knobLength = knobStartingChain.length();
+
+			// Calculate the length of the knob-chain:
+			var knobCount = 1;
+			var knobEndingChain = segment;
+			while (almostEqual(knobEndingChain.next.length(),knobLength,0,0.001) &&
+					knobEndingChain.next.isKnob() &&
+					knobEndingChain.next!=firstSegment)  {
+				knobEndingChain = knobEndingChain.next;
+				knobCount++;
+			}
+			knobStartingChain.knobCount = knobCount;
+
+			// Check if there is a continuator starting at knobStartingChain:
+			if (hasContinuator(knobCount, knobStartingChain, knobEndingChain))
+				return knobStartingChain;
+
+			segment = knobEndingChain.next; // ...and continue searching
+		} else {
+			segment = segment.next;  // ...and continue searching
+		}
+
+		if (segment==firstSegment) {
+			console.log(this.segments.toString());
+			throw new Error("No continuator found - this is against the Theorem!");
+		}
+	}
+}
+
+/**
+ * @return a list of all first-knobs with continuators.
+ */
+MinSquareCoveringData.prototype.findAllSegmentsWithContinuators = function() {
+	TRACE("\findAllSegmentsWithContinuators: "+this.segments.length+" segments")
+
+	var theSegments = [];
+
+	var firstSegment = this.firstInChain();
+	var segment = firstSegment;
+	for (;;) {
+		if (segment.isKnob()) {
+			var knobStartingChain = segment;
+			var knobLength = knobStartingChain.length();
+
+			// Calculate the length of the knob-chain:
+			var knobCount = 1;
+			var knobEndingChain = segment;
+			while (almostEqual(knobEndingChain.next.length(),knobLength,0,0.001) &&
+					knobEndingChain.next.isKnob() &&
+					knobEndingChain.next!=firstSegment)  {
+				knobEndingChain = knobEndingChain.next;
+				knobCount++;
+			}
+			knobStartingChain.knobCount = knobCount;
+
+			// Check if there is a continuator starting at knobStartingChain:
+			if (hasContinuator(knobCount, knobStartingChain, knobEndingChain))
+				theSegments.push(knobStartingChain);
+
+			segment = knobEndingChain.next; // ...and continue searching
+		} else {
+			segment = segment.next;  // ...and continue searching
+		}
+
+		if (segment==firstSegment)
+			break;
+	}
+
+	if (!theSegments.length) {
+		console.log(this.segments.toString());
+		throw new Error("No continuator found - this is against the Theorem!");
+	}
+
+	return theSegments;
+}
+
+/**
+ *  remove the given segments and their c0/c1 corners.
+ *  Segments must be in increasing order.
+ */
+MinSquareCoveringData.prototype.removeSegments = function(segments, removeCornersBeforeSegments) {
+	var prev = segments[0].prev;
+	var next = segments[segments.length-1].next;
+	for (var i=0; i<segments.length; ++i) {
+		var segmentToRemove = segments[i];
+		this.segments.remove(segmentToRemove);
+		var cornerToRemove = removeCornersBeforeSegments? segmentToRemove.c0: segmentToRemove.c1;
+		cornerToRemove.remove();
+	}
+	if (removeCornersBeforeSegments)  // prev.c1 is before segments[0] and hence removed:
+		prev.c1 = next.c0;
+	else                              // next.c0 is after segments.last and hence removed:
+		next.c0 = prev.c1;
+	prev.c1.setOutgoingSegment(next);
+	next.c0.setIncomingSegment(prev);
+}
+
+
+/**
+ * @param knob a segment in this.segments.
+ * @param knobCount a number between 1 and 4 describing the number of adjacent knobs (starting from knob)
+ */
+MinSquareCoveringData.prototype.removeErasableRegion = function(knob) {
+	if (!knob.isKnob()) {
+		console.dir(knob);
+		throw new Error("non-knob disguised as a knob!")
+	}
+
+	var knobCount = knob.knobCount;
+
+	if (knobCount<1 || 4<knobCount) {
+		console.dir(knob);
+		throw new Error("illegal knobCount "+knobCount);
+	}
+
+	if (knobCount==4) {
+		this.removeAll();
+		TRACE("\t4 knobs: removing all: "+this.isEmpty());
+		return;
+	}
+
+	else if (knobCount==3) {  // a room with a door; remove the "balcony" of the room.
+		var knob1=knob, knob2=knob.next, knob3=knob.next.next;
+//			console.log("*** 3 knobs - remove balcony ***");
+//			console.log("knob1="+knob1.toString()+"\nknob2="+knob2.toString()+"\nknob3="+knob3.toString());
+		if (knob1.isVertical()) {
+			var doorWidth = Math.abs(knob1.prev.c0.x - knob3.next.c1.x);
+			knob1.setX(knob1.prev.c0.x);
+			knob1.c1.y = knob1.c0.y + knob1.ySign()*doorWidth;
+			knob1.c0.y = knob1.prev.prev.c0.y;
+			knob3.setX(knob3.next.c1.x);
+			knob3.c0.y = knob3.c1.y - knob3.ySign()*doorWidth;
+			knob3.c1.y = knob3.next.next.c1.y;
+		} else {
+			var doorWidth = Math.abs(knob1.prev.c0.y - knob3.next.c1.y);
+			knob1.setY(knob1.prev.c0.y);
+			knob1.c1.x = knob1.c0.x + knob1.xSign()*doorWidth;
+			knob1.c0.x = knob1.prev.prev.c0.x;
+			knob3.setY(knob3.next.c1.y);
+			knob3.c0.x = knob3.c1.x - knob3.xSign()*doorWidth;
+			knob3.c1.x = knob3.next.next.c1.x;
+		}
+		this.removeSegments([knob1.prev.prev,knob1.prev], /*removeCornersBeforeSegments=*/true);
+		this.removeSegments([knob3.next,knob3.next.next], /*removeCornersBeforeSegments=*/false);
+
+		knob = knob2;  // this is a 1-knob continuator
+		this.calculateConvexityAndVisibility();
+		this.checkValid();
+	}
+
+	else if (knobCount==2) {     // a room with a wide opening; remove the "balcony" of the room.
+		var knob1=knob, knob2=knob.next;
+		var knobLength = knob.length(), prevLength = knob1.prev.length(), nextLength = knob2.next.length();
+		TRACE("\t2 knobs: remove balcony");
+		TRACE("\t\tprevLength="+prevLength+"\n\t\tknob1="+knob1.toString()+"\n\t\tknob2="+knob2.toString()+"\n\t\tknobLength="+knobLength+"\n\t\tnextLength="+nextLength);
+		if ((almostEqual(prevLength,nextLength,0,0.001) && nextLength<=knobLength)) {      // type #1
+			var doorWidth = knobLength-prevLength;
+			if (knob1.isVertical()) {
+				knob1.setX(knob1.prev.c0.x);  // also sets knob2.c0.x
+				knob2.setY(knob2.next.c1.y);  // also sets knob1.c1.y
+				knob1.c0.y = knob1.prev.prev.c0.y;
+				knob2.c1.x = knob2.next.next.c1.x;
+			} else {
+				knob1.setY(knob1.prev.c0.y);  // also sets knob2.c0.y
+				knob2.setX(knob2.next.c1.x);  // also sets knob1.c1.x
+				knob1.c0.x = knob1.prev.prev.c0.x;
+				knob2.c1.y = knob2.next.next.c1.y;
+			}
+			this.removeSegments([knob1.prev.prev,knob1.prev], /*removeCornersBeforeSegments=*/true);
+			this.removeSegments([knob2.next,knob2.next.next], /*removeCornersBeforeSegments=*/false);
+			knob = null;  // no 1-knob continuator (???)
+		} else if ((prevLength<nextLength && nextLength<=knobLength) ||    // type #2
+ 		    (prevLength<=knobLength && knobLength<=nextLength)) {      // type #1
+			var doorWidth = knobLength-prevLength;
+			if (knob1.isVertical()) {
+				knob1.setX(knob1.prev.c0.x);
+				knob1.c1.y = knob1.c0.y + knob1.ySign()*doorWidth;
+				knob1.c0.y = knob1.prev.prev.c0.y;
+				knob2.c1.y = knob2.c0.y; // = knob1.c1.y
+			} else {
+				knob1.setY(knob1.prev.c0.y);
+				knob1.c1.x = knob1.c0.x + knob1.xSign()*doorWidth;
+				knob1.c0.x = knob1.prev.prev.c0.x;
+				knob2.c1.x = knob2.c0.x; // = knob1.c1.x
+			}
+			this.removeSegments([knob1.prev.prev,knob1.prev], /*removeCornersBeforeSegments=*/true);
+			knob = knob2;  // this is a 1-knob continuator
+		} else if (	(nextLength<prevLength && prevLength<=knobLength) ||  // type #2
+			        (nextLength<=knobLength && knobLength<=prevLength))  {  // type #1
+			var doorWidth = knobLength-nextLength;
+			if (knob2.isVertical()) {
+				knob2.setX(knob2.next.c1.x);
+				knob2.c0.y = knob2.c1.y - knob2.ySign()*doorWidth;
+				knob2.c1.y = knob2.next.next.c1.y;
+				knob1.c0.y = knob1.c1.y; // = knob2.c0.y
+			} else {
+				knob2.setY(knob2.next.c1.y);
+				knob2.c0.x = knob2.c1.x - knob2.xSign()*doorWidth;
+				knob2.c1.x = knob2.next.next.c1.x;
+				knob1.c0.x = knob1.c1.x; // = knob2.c0.x
+			}
+			this.removeSegments([knob2.next,knob2.next.next], /*removeCornersBeforeSegments=*/true);
+			knob = knob1;  // this is a 1-knob continuator
+		}
+		TRACE("\t2 knobs: removeD balcony");
+		TRACE("\t\tknob1="+knob1.toString()+"\n\t\tknob2="+knob2.toString());
+
+		this.calculateConvexityAndVisibility();
+		this.checkValid();
+	}
+
+	if (!knob)  return;
+
+	// handle remaining 1-knob continuator:
+	var exposedDistance0 = knob.prev.length();
+	if (knobCount==1 && exposedDistance0<almostEqual.FLT_EPSILON || exposedDistance0<0) {console.log("knob="+knob.toString());  throw new Error("exposedDistance at knob.prev = "+exposedDistance0)}
+	var exposedDistance1 = knob.next.length();
+	if (knobCount==1 && exposedDistance1<almostEqual.FLT_EPSILON || exposedDistance1<0) {console.log("knob="+knob.toString()); throw new Error("exposedDistance at knob.next = "+exposedDistance1)}
+	var exposedDistance = Math.min(exposedDistance0,exposedDistance1);
+	var coveredDistance = knob.length(); // TODO: calculate the actual covering distance
+	if (knobCount==1 && coveredDistance<almostEqual.FLT_EPSILON || coveredDistance<0) {console.log("knob="+knob.toString()); throw new Error("coveredDistance = "+coveredDistance)}
+	var securityDistance = knob.distanceToNearestBorder() - knob.length();
+	if (knobCount==1 && securityDistance<almostEqual.FLT_EPSILON || securityDistance<0) {console.log("knob="+knob.toString()); throw new Error("securityDistance = "+securityDistance)}
+	var nonExposedDistance = Math.min(coveredDistance,securityDistance);
+	TRACE("nonExposedDistance=min("+coveredDistance+","+securityDistance+")="+nonExposedDistance+" exposedDistance=min("+exposedDistance0+","+exposedDistance1+")="+exposedDistance);
+
+	if (nonExposedDistance>0 && nonExposedDistance < exposedDistance) { // The knob just moves into the polygon:
+		if (knob.isVertical())
+			knob.c0.x = knob.c1.x = knob.c1.x + knob.signOfPolygonInterior()*nonExposedDistance;
+		else
+			knob.c0.y = knob.c1.y = knob.c1.y + knob.signOfPolygonInterior()*nonExposedDistance;
+	} else if (exposedDistance>0 && exposedDistance <= nonExposedDistance){  // some corners should be removed:
+		if (exposedDistance0<exposedDistance1) {
+			// shorten the next segment:
+			if (knob.isVertical())
+				knob.next.c0.x=knob.prev.c0.x;
+			else
+				knob.next.c0.y=knob.prev.c0.y;
+			this.removeSegments([knob.prev,knob], /*removeCornersBeforeSegments=*/true);
+		} else if (exposedDistance1<exposedDistance0) {
+			// shorten the previous segment:
+			if (knob.isVertical())
+				knob.prev.c1.x=knob.next.c1.x;
+			 else
+				knob.prev.c1.y=knob.next.c1.y;
+			this.removeSegments([knob, knob.next], /*removeCornersBeforeSegments=*/false);
+		} else {
+			if (knob.isVertical())
+				knob.prev.prev.c1.y=knob.next.next.c1.y;
+			else
+				knob.prev.prev.c1.x=knob.next.next.c1.x;
+			this.removeSegments([knob.prev, knob, knob.next, knob.next.next], /*removeCornersBeforeSegments=*/true);
+		}
+	}
+	this.checkValid();
+}
+
+MinSquareCoveringData.prototype.removeAll = function() {
+	this.segments.initialize();
+	this.corners.initialize();
+}
+
+MinSquareCoveringData.prototype.checkValid = function() {
+	this.segments.forEach(function(segment){
+		if (!segment.isAxisParallel())
+			throw new Error("Invalid polygon: "+this.corners.toString()+"\n\tOne of the segments is not axis parallel: "+segment.toString());
+		if (segment.isKnob() && segment.distanceToNearestBorder()==0)
+			throw new Error("Invalid polygon: "+this.corners.toString()+"\n\tOne of the segments is adjacent to the border: "+segment.toString());
+		if (segment.prev===null)
+			throw new Error("Invalid polygon: "+this.corners.toString()+"\n\tsegment.prev is null: "+segment.toString());
+		if (segment.next===null)
+			throw new Error("Invalid polygon: "+this.corners.toString()+"\n\tsegment.next is null: "+segment.toString());
+	},this)
+
+	this.corners.forEach(function(corner){
+		if (!corner.s0.isAxisParallel())
+			throw new Error("Invalid polygon: "+this.corners.toString()+"\n\tSegment before corner "+corner.toString()+" is not axis parallel: "+corner.s0);
+		if (!corner.s1.isAxisParallel())
+			throw new Error("Invalid polygon: "+this.corners.toString()+"\n\tSegment after corner "+corner.toString()+" is not axis parallel: "+corner.s1);
+		if (corner.s0.prev===null)
+			throw new Error("Invalid polygon: "+this.corners.toString()+"\n\tSegment before corner "+corner.toString()+" has null prev: "+corner.s0);
+		if (corner.s1.prev===null)
+			throw new Error("Invalid polygon: "+this.corners.toString()+"\n\tSegment after corner "+corner.toString()+" has null prev: "+corner.s1);
+	},this)
+}
+
+
+
+var cornerToKey = function(corner) {
+	return corner.x+","+corner.y;
+}
+
+MinSquareCoveringData.prototype.hasConvexCorner = function(corner) {
+	if (!this.hashOfConvexCorners) {
+		this.hashOfConvexCorners = {};
+		this.corners.forEach(function(point) {
+			if (point.isConvex)
+				this.hashOfConvexCorners[cornerToKey(point)]=true;
+		},this)
+	}
+	return this.hashOfConvexCorners[cornerToKey(corner)];
+}
+
+MinSquareCoveringData.prototype.getResidualPolygon = function() {
+	var residualPolygonPoints = this.corners.map(function(corner) {
+		return {x:corner.x, y:corner.y}
+	});
+	residualPolygonPoints.push(residualPolygonPoints[0]);
+	return this.factory.createSimpleRectilinearPolygon(residualPolygonPoints);
+}
+
+/**
+ * Iterates the squares covering this polygon.
+ *
+ * @param iterator a function with a single argument which is the current covering square.
+ * The function should return a truthy value; if it returns a falsy value, the iteration stops immediately.
+ */
+MinSquareCoveringData.prototype.iterateMinimumCovering = function(iterator) {
+	var P = this;   // P is the residual polygon.
+	var maxIterations = Math.max(2*P.corners.length,200);
+	while (!P.isEmpty()) {
+		TRACE("\nP="+P.corners.toString())
+		var knob = P.findSegmentWithContinuator(); // returns the first knob in a continuator.
+		var continuator = knob.getAdjacentSquareInPolygon();
+		TRACE("\tprocessing knob "+knob.toString()+"\twith continuator "+JSON.stringify(continuator))
+		P.removeErasableRegion(knob);
+
+		var balconyOfContinuatorIsCovered = false; // TODO: check whether the balcony is really covered, to avoid redundant squares.!
+		if (!balconyOfContinuatorIsCovered) {
+			var shouldWeContinue = iterator(continuator);
+			if (!shouldWeContinue)
+				break;
+		}
+
+		maxIterations--;
+		if (maxIterations<=0)
+			throw new Error("Covering not found after many iterations!");
+	}
+
+}
+
+/**
+ * @return a list of squares covering this polygon.
+ */
+MinSquareCoveringData.prototype.findMinimumCovering = function() {
+	var covering = [];       // C is the current covering.
+	this.iterateMinimumCovering(function(square) {
+		covering.push(square);
+		return true;
+	});
+	return covering;
+}
+
+
+
+/**
+ * A shorthand function for directly calculating the minimal square covering of a polygon defined by the given xy values.
+ * Useful for testing and demonstrations.
+ *
+ * @param arg A SimpleRectilinearPolygon
+ * @return an array with a minimal square covering of that polygon.
+ */
+jsts.algorithm.minSquareCovering = function(arg, factory) {
+	var srp = arg;
+	var srpc = new jsts.algorithm.MinSquareCoveringData(srp);
+	var covering = srpc.findMinimumCovering();
+	if (factory) {
+		return covering.map(function(square) {
+			return factory.createAxisParallelRectangle(square);
+		});
+	} else {
+		return covering;
+	}
+}
+
+}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{"./DoublyLinkedList":4,"./Side":9,"./SimpleRectilinearPolygon":10,"almost-equal":27,"jsclass/src/linked_list":39}],8:[function(require,module,exports){
+(function (global){
+/**
+ * Calculate a largest subset of interior-disjoint representative shapes from given sets of candidates.
+ *
+ * @author Erel Segal-Halevi
+ * @since 2014-03
+ */
+
+var Combinatorics = require('js-combinatorics');
+var _ = require('underscore');
+
+var jsts = global.jsts
+require("./intersection-cache");
+require("./partition-utils");
+
+
+/*--- Main Algorithm ---*/
+
+/**
+ * Calculate a largest subset of non-intersecting shapes from a given set of candidates.
+ * @param candidates a set of shapes (geometries).
+ * @param stopAtCount - After finding this number of disjoint shapes, don't look further (default: infinity)
+ * @return a subset of these shapes, that are guaranteed to be pairwise disjoint.
+ */
+jsts.algorithm.representativeDisjointSet = function(candidateSets) {
+	if (!candidateSets) 	return [];
+
+	candidateSets = candidateSets.filter(function(set){return set.length>0});
+	if (!candidateSets.length) return [];
+
+	candidateSets = candidateSets.map(jsts.algorithm.prepareShapesToPartition);
+
+	var allCandidates = candidateSets.reduce(function(a, b) { return a.concat(b); });
+	jsts.algorithm.prepareDisjointCache(allCandidates);
+
+	var repDisjointSet = representativeDisjointSetSub(candidateSets);
+	if (repDisjointSet) return repDisjointSet;
+
+	// If a set of n representatives is not found, we should return null,
+	//    but for the sake of presentation to users
+	//    we try to find a set of n-1 representatives.
+	//    this is not optimized as this is not the main goal of the algorithm.
+	else return jsts.algorithm.representativeDisjointSet(candidateSets.slice(1));
+}
+
+
+/**
+ * Find an interior-disjoint set of representative shapes, from the given set of candidates,
+ * or null if not found.
+ *
+ * @param candidateSets an array of arrays of candidate shapes.
+ *
+ * @return a set of shapes that do not interior-intersect, or null if not found.
+ *
+ * @author Erel Segal-Halevi
+ * @since 2014-03
+ */
+function representativeDisjointSetSub(candidateSets) {
+	var allSets = Combinatorics.cartesianProduct.apply(null,candidateSets);
+	while (subset = allSets.next()) {
+		if (jsts.algorithm.arePairwiseDisjointByCache(subset))
+			return subset;
+	}
+	return null;
+}
+
+}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{"./intersection-cache":19,"./partition-utils":21,"js-combinatorics":33,"underscore":58}],9:[function(require,module,exports){
+(function (global){
+/**
+ * Enums related to sides
+ */
+
+var jsts = global.jsts;
+
+/**
+ * angle relative to x axis: 90*(3-Side)
+ */
+jsts.Side = {
+	South: 0,
+	West: 1,
+	North: 2,
+	East: 3
+};
+
+jsts.sideToLetter = {};
+
+for (var i in jsts.Side)
+	jsts.sideToLetter[jsts.Side[i]] = i[0];
+
+jsts.inverseSide = function(side) {
+	return (side+2)%4;
+}
+
+jsts.isVertical = function(side) { return side%2==0; }
+jsts.isHorizontal = function(side) { return side%2==1; }
+
+jsts.Turn = {
+	Left: -1,
+	Right: 1
+};
+
+
+jsts.turn = function(side1, side2) {
+	var t = side2-side1;
+	if (t>1) t-=4;
+	if (t<-1) t+=4;
+	return t;
+}
+
+jsts.turnDirection = function(turn) {
+	return turn>0? 1: -1;
+}
+
+}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{}],10:[function(require,module,exports){
+(function (global){
+/**
+ * The SimpleRectilinearPolygon class represents a hole-free (simply-connected) rectilinear polygon.
+ * Contains special data structures for calculating the minimum square covering.
+ * Based on Bar-Yehuda, R. and Ben-Hanoch, E. (1996). A linear-time algorithm for covering simple polygons with similar rectangles. International Journal of Computational Geometry & Applications, 6.01:79-102.
+ * 	http://www.citeulike.org/user/erelsegal-halevi/article/12475038
+ *
+ * @author Erel Segal-Halevi
+ * @since 2014-07
+ */
+
+
+var jsts = global.jsts;
+
+var round4 = function(x) { return Math.round(x*10000)/10000; }
+
+/**
+ * Constructs a simply-connected rectilinear polygon.
+ *
+ * @param xy an array of alternating x and y values.
+ * The points of the polygon are: (xy[0],xy[1]), (xy[2],xy[1]), (xy[2],xy[3]), ...
+ * @note the first side is always horizontal.
+ * @constructor
+ */
+var SimpleRectilinearPolygon = jsts.geom.SimpleRectilinearPolygon = function(xy, factory) {
+	if (!Array.isArray(xy))
+		throw new Error("xy should be an array but is "+JSON.stringify(xy));
+	if (xy.length==0)
+		throw new Error("xy is empty: "+JSON.stringify(xy));
+	if (!factory)
+		throw new Error("factory is empty");
+
+	var points;
+	var first = xy[0];
+	if ((typeof first === 'object') && ('x' in first)) {
+		// xy is already an array of points
+		points = xy.map(function(point) {return new jsts.geom.Coordinate(round4(point.x),round4(point.y))});
+		if (points.length<5)
+			throw new Error("only "+points.length+" points: "+JSON.stringify(points));
+		if (points.length%2==0)
+			throw new Error("even number of points: "+JSON.stringify(points));
+
+		if (SimpleRectilinearPolygon.FORCE_FIRST_SEGMENT_HORIZONTAL && points[0].x==points[1].x) {
+			points.shift();
+			points.push(points[0]);
+		}
+
+	} else {
+		xy = xy.map(round4);
+		if (xy.length%2==1)
+			throw new Error("odd number of xy values: "+JSON.stringify(xy));
+		points = [];	// xy is an array of x-y-x-y-x-y-...
+		for (var i=0; i<xy.length; i+=2) {
+			points.push(new jsts.geom.Coordinate (xy[i], xy[i+1]));
+			points.push(new jsts.geom.Coordinate (xy[i+2<xy.length? i+2: 0], xy[i+1]));
+		}
+		points.push(new jsts.geom.Coordinate(xy[0], xy[1]));	// last point is identical to first point
+	}
+	// points = factory.getCoordinateSequenceFactory().create(points);  // JSTS version 1.2.1
+	points = factory.createCoordinates(points);  // JSTS version 0.14.0
+	jsts.geom.LinearRing.call(this, points, factory);  // call parent constructor
+};
+
+jsts.inherits(SimpleRectilinearPolygon,jsts.geom.LinearRing)
+//SimpleRectilinearPolygon.prototype = new jsts.geom.LinearRing(); //Object.create(jsts.geom.LinearRing.prototype);
+//SimpleRectilinearPolygon.constructor = SimpleRectilinearPolygon;
+SimpleRectilinearPolygon.FORCE_FIRST_SEGMENT_HORIZONTAL = true;
+
+
+SimpleRectilinearPolygon.prototype.getPolygon = function() {
+	if (!this.polygon)
+		this.polygon = this.factory.createPolygon(this);
+	return this.polygon;
+}
+
+/**
+ * Creates and returns a full copy of this {@link Polygon} object. (including
+ * all coordinates contained by it).
+ *
+ * @return a clone of this instance.
+ */
+SimpleRectilinearPolygon.prototype.clone = function() {
+	return new SimpleRectilinearPolygon(this.points, this.factory);
+};
+
+SimpleRectilinearPolygon.prototype.relate2 = function(g) {
+	return this.getPolygon().relate2(g)
+}
+
+/**
+ * @return the coordinates of this polygon, in 2-d format
+ */
+SimpleRectilinearPolygon.prototype.getCoordinates2D = function() {
+	return this.getCoordinates().map(function(coords) {
+		return {x:coords.x, y:coords.y}
+	});
+}
+
+/**
+ * @return {String} String representation of Polygon type.
+ */
+SimpleRectilinearPolygon.prototype.toString = function() {
+	return 'SimpleRectilinearPolygon with '+(this.points.length-1)+' corners: '+this.points;
+};
+
+var cornerToKey = function(corner) {
+	return corner.x+","+corner.y;
+}
+
+
+SimpleRectilinearPolygon.prototype.hasCorner = function(corner) {
+	if (!this.hashOfCorners) {
+		this.hashOfCorners = {};
+		this.points.forEach(function(point) {
+			this.hashOfCorners[cornerToKey(point)]=true;
+		}, this);
+	}
+
+	return this.hashOfCorners[cornerToKey(corner)];
+}
+
+SimpleRectilinearPolygon.prototype.pushIfNotMyCorner = function(newPoints, corner) {
+	if (!this.hasCorner(corner))
+		newPoints.push(corner);
+}
+
+
+function isCornerOf(point, rectangle) {
+	return (
+		(point.x==rectangle.minx || point.x==rectangle.maxx) &&
+		(point.y==rectangle.miny || point.y==rectangle.maxy) );
+}
+
+
+/**
+ * @author http://engblog.nextdoor.com/post/86430627239/fast-polygon-self-intersection-detection-in-javascript
+ */
+SimpleRectilinearPolygon.prototype.selfIntersectionPoints = function() {
+	var jstsPolygon = this.getPolygon();
+	var res = [];
+
+	// if the geometry is aleady a simple linear ring, do not
+	// try to find self intersection points.
+	var validator = new jsts.operation.IsSimpleOp(jstsPolygon);
+	if (validator.isSimpleLinearGeometry(jstsPolygon)) {
+		return [];
+	}
+
+	var graph = new jsts.geomgraph.GeometryGraph(0, jstsPolygon);
+	var cat = new jsts.operation.valid.ConsistentAreaTester(graph);
+	var r = cat.isNodeConsistentArea();
+	if (!r) {
+		var pt = cat.getInvalidPoint();
+		res.push([pt.x, pt.y]);
+	}
+	return res;
+}
+
+/**
+ * @return true if this polygon is actually a rectangle and is identical to theRectangle.
+ *
+ */
+SimpleRectilinearPolygon.prototype.isEqualToRectangle = function(theRectangle) {
+	if (this.points.length!=5) return false;
+	var corner1 = this.points[0], corner2 = this.points[2];
+	var minx = Math.min(corner1.x,corner2.x)
+	var maxx = Math.max(corner1.x,corner2.x)
+	var miny = Math.min(corner1.y,corner2.y)
+	var maxy = Math.max(corner1.y,corner2.y)
+	return (true
+		&& minx == theRectangle.minx
+		&& maxx == theRectangle.maxx
+		&& miny == theRectangle.miny
+		&& maxy == theRectangle.maxy
+	)
+}
+
+
+/**
+ * Remove a certain rectangular land-plot from this polygon.
+ *
+ * @param landplot a rectangle {minx:,maxx:,miny:,maxy:} contained in the polygon and adjacent to the border.
+ * @return this SimpleRectilinearPolygon with the landplot removed.
+ * (this polygon is not changed).
+ */
+SimpleRectilinearPolygon.prototype.removeRectangle = function(landplot) {
+		// If the input landplot is empty - there is nothing to remove:
+		if (landplot.minx==landplot.maxx || landplot.miny==landplot.maxy) { // empty landplot
+			console.warn("\nWARNING: empty rectangle to remove: "+JSON.stringify(landplot))
+			return this;
+		}
+
+		// If the input landplot is identical to the entire polygon - return an empty polygon:
+		if (this.isEqualToRectangle(landplot)) {
+			return this.factory.createSimpleRectilinearPolygon([0,0]);
+		}
+
+		//console.dir(this)
+		//console.dir(landplot)
+
+		var newPoints = [];
+		var landplotIsAdjacentToBorder = false;  // If this flag remains false, this is an error since the result is not simply-connected.
+
+		var thisPolygon = this;
+
+		var setLandplotAdjacentToBorder = function()  {
+			if (landplotIsAdjacentToBorder) {
+				throw new Error("landplot meets the border more than once - the result will be disconnected!\n\tthis.points="+JSON.stringify(thisPolygon.points)+"\n\tremoveRectangle("+JSON.stringify(landplot)+"):");
+			}
+			landplotIsAdjacentToBorder = true;
+		}
+
+		for (var i=1; i<this.points.length; ++i) {
+			var corner0 = this.points[i-1];
+			var corner1 = this.points[i];
+			var corner0isCornerOfLandplot = isCornerOf(corner0, landplot);
+
+			if (corner0isCornerOfLandplot) {
+				if (newPoints.length>0) {
+					// handle the special case in which landplot covers two adjacent corners:
+					lastCornerAdded = newPoints[newPoints.length-1];
+					if (corner0.x==lastCornerAdded.x&&corner0.y==lastCornerAdded.y)
+						newPoints.pop();
+				}
+				continue;
+			} else {
+				newPoints.push(corner0);
+			}
+
+			if (corner0.x==corner1.x) {  // vertical wall
+				var x = corner0.x;       // x value of wall
+				if (landplot.minx==x) {  // landplot is adjacent to western vertical wall
+					//console.log("\tlandplot is adjacent to western vertical wall");
+					if (corner0.y>corner1.y) {   // wall goes from north to south
+						if (corner0.y>=landplot.miny && landplot.miny>=corner1.y) {
+							setLandplotAdjacentToBorder();
+							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.maxy})
+							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.maxy})
+							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.miny})
+							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.miny})
+						} else if (corner1.y==landplot.maxy) {
+							setLandplotAdjacentToBorder();
+							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.miny})
+							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.miny})
+						}
+					} else if (corner0.y<corner1.y) { // wall goes from south to north
+						if (corner1.y>=landplot.maxy && landplot.maxy>=corner0.y) {
+							setLandplotAdjacentToBorder();
+							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.miny})
+							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.miny})
+							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.maxy})
+							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.maxy})
+						} else if (corner1.y==landplot.miny) {
+							setLandplotAdjacentToBorder();
+							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.maxy})
+							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.maxy})
+						}
+					} else {  // corner0 is identical to corner1 - error:
+						throw new Error("Illegal border - two identical corners: corner0="+JSON.stringify(corner0)+" corner1="+JSON.stringify(corner1));
+					}
+				} else if (landplot.maxx==x) {  // landplot is adjacent to eastern vertical wall
+					//console.log("\tlandplot is adjacent to eastern vertical wall");
+					if (corner0.y>corner1.y) {   // wall goes from north to south
+						if (corner0.y>=landplot.miny && landplot.miny>=corner1.y) {
+							setLandplotAdjacentToBorder();
+							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.maxy})
+							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.maxy})
+							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.miny})
+							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.miny})
+						} else if (corner1.y==landplot.maxy) {
+							setLandplotAdjacentToBorder();
+							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.miny})
+							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.miny})
+						}
+					} else if (corner0.y<corner1.y) { // wall goes from south to north
+						if (corner1.y>=landplot.maxy && landplot.maxy>=corner0.y) {
+							setLandplotAdjacentToBorder();
+							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.miny})
+							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.miny})
+							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.maxy})
+							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.maxy})
+						} else if (corner1.y==landplot.miny) {
+							setLandplotAdjacentToBorder();
+							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.maxy})
+							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.maxy})
+						}
+					} else {  // corner0 is identical to corner1 - error:
+						throw new Error("Illegal border - two identical corners: corner0="+JSON.stringify(corner0)+" corner1="+JSON.stringify(corner1));
+					}
+				} // else, landplot is not adjacent to current wall.
+			} else if (corner0.y==corner1.y) {  // horizontal wall
+				var y = corner0.y;       //  value of wall
+				if (landplot.miny==y) {
+					//console.log("\tlandplot is adjacent to southern horizontal wall")
+					if (corner0.x>corner1.x) {   // wall goes from east to west
+						if (corner0.x>=landplot.minx && landplot.minx>=corner1.x) {
+							setLandplotAdjacentToBorder();
+							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.miny})
+							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.maxy})
+							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.maxy})
+							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.miny})
+						} else if (corner1.x==landplot.maxx) {
+							setLandplotAdjacentToBorder();
+							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.miny})
+							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.maxy})
+						}
+					} else if (corner0.x<corner1.x) { // wall goes from west to east
+						if (corner0.x<=landplot.maxx && landplot.maxx<=corner1.x) {
+							setLandplotAdjacentToBorder();
+							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.miny})
+							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.maxy})
+							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.maxy})
+							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.miny})
+						} else if (corner1.x==landplot.minx) {
+							setLandplotAdjacentToBorder();
+							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.miny})
+							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.maxy})
+						}
+					} else {  // corner0 is identical to corner1 - error:
+						throw new Error("Illegal border - two identical corners: corner0="+JSON.stringify(corner0)+" corner1="+JSON.stringify(corner1));
+					}
+				} else if (landplot.maxy==y) {  // landplot is adjacent to northern horizontal wall
+					//console.log("\tlandplot is adjacent to northern horizontal wall")
+					if (corner0.x>corner1.x) {   // wall goes from east to west
+						if (corner0.x>=landplot.minx && landplot.minx>=corner1.x) {
+							setLandplotAdjacentToBorder();
+							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.maxy})
+							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.miny})
+							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.miny})
+							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.maxy})
+						} else if (corner1.x==landplot.maxx) {
+							setLandplotAdjacentToBorder();
+							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.maxy})
+							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.miny})
+						}
+					} else if (corner0.x<corner1.x) { // wall goes from west to east
+						if (corner0.x<=landplot.maxx && landplot.maxx<=corner1.x) {
+							setLandplotAdjacentToBorder();
+							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.maxy})
+							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.miny})
+							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.miny})
+							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.maxy})
+						} else if (corner1.x==landplot.minx) {
+							setLandplotAdjacentToBorder();
+							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.maxy})
+							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.miny})
+						}
+					} else {  // corner0 is identical to corner1 - error:
+						throw new Error("Illegal border - two identical corners: corner0="+JSON.stringify(corner0)+" corner1="+JSON.stringify(corner1));
+					}
+				} // else, landplot is not adjacent to current wall
+			} else {   // corner0 and corner1 are different in both coordinates - not an axis-parallel polygon
+				throw new Error("Illegal border - not an axis-parallel polygon: corner0="+JSON.stringify(corner0)+" corner1="+JSON.stringify(corner1));
+			}
+		}
+
+		if (!landplotIsAdjacentToBorder) {
+			throw new Error("removeRectangle("+JSON.stringify(landplot)+"): Landplot is not adjacent to border - the result is not a simply-connected polygon");
+		}
+
+		// remove redundant corners of the landplot, that overlap corners of the polygon:
+		lastCornerAdded = newPoints[newPoints.length-1];
+		if (corner1.x==lastCornerAdded.x&&corner1.y==lastCornerAdded.y)
+			newPoints.pop();
+		if (this.points[1].x==lastCornerAdded.x && this.points[1].y==lastCornerAdded.y)
+			newPoints.pop();
+
+		// keep the border cyclic:
+		newPoints.push(newPoints[0]);
+
+		var newPolygon = this.factory.createSimpleRectilinearPolygon(newPoints);
+
+		// check validity of new polygon:
+		var newPolygonIntersectionPoints = newPolygon.selfIntersectionPoints();
+		if (newPolygonIntersectionPoints.length>0) {
+			console.dir("this.points="+JSON.stringify(this.points));
+			console.dir("removeRectangle("+JSON.stringify(landplot)+") returns:");
+			console.dir(JSON.stringify(newPolygon.points));
+			throw new Error("New polygon has self-intersections at: "+JSON.stringify(newPolygonIntersectionPoints));
+		}
+
+		return newPolygon;
+}
+
+
+SimpleRectilinearPolygon.prototype.CLASS_NAME = 'SimpleRectilinearPolygon';
+
+/**
+ * Constructs a simply-connected rectilinear polygon.
+ *
+ * @param xy an array of alternating x and y values.
+ * The points of the polygon are: (xy[0],xy[1]), (xy[2],xy[1]), (xy[2],xy[3]), ...
+ * @note the first side is always horizontal.
+ */
+jsts.geom.GeometryFactory.prototype.createSimpleRectilinearPolygon = function(xy) {
+	return new SimpleRectilinearPolygon(xy, this);
+};
+
+}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{}],11:[function(require,module,exports){
+(function (global){
+/**
+ * Calculate a corner-square containing a given number of points.
+ *
+ * @author Erel Segal-Halevi
+ * @since 2017-01
+ */
+
+var jsts = global.jsts;
+var utils = require('./numeric-utils');
+var _ = require("underscore");
+
+/**
+ * @param points array of Points, e.g. [{x:0,y:0}, {x:100,y:100}, etc.]
+ * @param corner a Point that defines  the corner to which the output square should be attached.
+ * @param targetNumOfPoints int>=1: how many points should be in the square.
+ * @return the side-length of the smallest square containing the given num of points.
+ */
+jsts.algorithm.squareWithGivenNumOfPoints = function(points, corner, targetNumOfPoints) {
+	if (!targetNumOfPoints)
+		throw new Error("targetNumOfPoints is empty")
+	// sort the points according to smallest corner-square that contains them:
+	_.chain(points)
+		.forEach(function(p){p.distance = Math.max(Math.abs(p.x-corner.x),Math.abs(p.y-corner.y))})
+		.sort(function(a,b){return a.distance-b.distance})
+		.value();
+	return targetNumOfPoints<=points.length? points[targetNumOfPoints-1].distance: Infinity;
+}
+
+}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{"./numeric-utils":20,"underscore":58}],12:[function(require,module,exports){
+(function (global){
+/**
+ * Calculate a square containing a maximal number of points.
+ *
+ * @author Erel Segal-Halevi
+ * @since 2014-04
+ *
+ * REVIEWED AND CORRECTED BY:
+ * * Flambino
+ * * abuzittin gillifirca
+ * http://codereview.stackexchange.com/questions/46531/reducing-code-duplication-in-a-geometric-function
+ */
+
+var jsts = global.jsts;
+var utils = require('./numeric-utils');
+var _ = require("underscore");
+
+/**
+ * @param points array of points, e.g. [{x:0,y:0}, {x:100,y:100}, etc.]
+ * @param envelope defines the bounding rectangle, e.g. {minx: 0, maxx: 100, miny: 0, maxy: 200}
+ * @param maxAspectRatio number>=1: the maximum width/height ratio of the returned rectangle.
+ * @return a rectangle contained within the envelope, with aspect ratio at most maxAspectRatio, that contains a largest number of points.
+ */
+jsts.algorithm.squareWithMaxNumOfPoints = function(points, envelope, maxAspectRatio) {
+	if (!maxAspectRatio) maxAspectRatio=1;
+	var width = envelope.maxx-envelope.minx;
+	var height = envelope.maxy-envelope.miny;
+	var largestWidthPerHeight = maxAspectRatio*height;
+	var largestHeightPerWidth = maxAspectRatio*width;
+	var result = {};
+	points = jsts.algorithm.pointsInEnvelope(points, envelope);
+	//console.dir(envelope)
+	//console.log(width+" "+largestWidthPerHeight+" "+height+" "+largestHeightPerWidth)
+	if (width<=largestWidthPerHeight && height<=largestHeightPerWidth) {
+		// the envelope has aspect ratio at most maxAspectRatio, so just return it entirely:
+		result = {minx:envelope.minx, maxx:envelope.maxx, miny:envelope.miny, maxy:envelope.maxy};
+	} else if (width>largestWidthPerHeight) {
+		var miny = result.miny = envelope.miny;
+		var maxy = result.maxy = envelope.maxy;
+		var xValues = utils.sortedUniqueValues(points, ["x"]);
+		if (xValues.length==0) {  // no x values in the envelope - just return any rectangle within the envelope
+			result.minx = envelope.minx;
+			result.maxx = result.minx+largestWidthPerHeight;
+		} else {
+			var maxNum   = 0;
+			for (var i=0; i<xValues.length; ++i) {
+				var minx = Math.min(xValues[i], envelope.maxx-largestWidthPerHeight);
+				var maxx = minx+largestWidthPerHeight;
+				var curNum = jsts.algorithm.numPointsInXY(points, minx,miny,maxx,maxy);
+				if (curNum>maxNum) {
+					maxNum = curNum;
+					result.minx = minx;
+					result.maxx = maxx;
+				}
+			}
+		}
+	} else {  // height>largestHeightPerWidth
+		var minx = result.minx = envelope.minx;
+		var maxx = result.maxx = envelope.maxx;
+		var yValues = utils.sortedUniqueValues(points, ["y"]);
+		if (yValues.length==0) {  // no y values in the envelope - just return any rectangle within the envelope
+			result.miny = envelope.miny;
+			result.maxy = result.miny+largestHeightPerWidth;
+		} else {
+			var maxNum   = 0;
+			for (var i=0; i<yValues.length; ++i) {
+				var miny = Math.min(yValues[i], envelope.maxy-largestHeightPerWidth);
+				var maxy = miny+largestHeightPerWidth;
+				var curNum = jsts.algorithm.numPointsInXY(points, minx,miny,maxx,maxy);
+				if (curNum>maxNum) {
+					maxNum = curNum;
+					result.miny = miny;
+					result.maxy = maxy;
+				}
+			}
+		}
+	}
+	return result;
+}
+
+}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{"./numeric-utils":20,"underscore":58}],13:[function(require,module,exports){
 var _ = require("underscore");
 
 /**
@@ -101,6 +2361,18 @@ ValueFunction.prototype.setPoints = function(points) {
 	this.setYCuts();
 }
 
+ValueFunction.prototype.getNumOfPointsPerValue = function (requestedValue)
+{
+		var requestedNumOfPoints = Math.ceil(requestedValue / this.valuePerPoint);
+		if (isNaN(requestedNumOfPoints))
+			throw new Error("requestedNumOfPoints is NaN: requestedValue="+requestedValue+" valuePerPoint="+this.valuePerPoint)
+		if (requestedNumOfPoints==0) {
+			console.dir(this);
+			throw new Error("requestedNumOfPoints is 0: requestedValue="+requestedValue+" valuePerPoint="+this.valuePerPoint)
+		}
+		return requestedNumOfPoints;
+}
+
 ValueFunction.prototype.setYCuts = function() {
 	var yVals = _.pluck(this.points, "y");
 	yVals.sort(function(a,b){return a-b});
@@ -119,6 +2391,10 @@ ValueFunction.prototype.setYCuts = function() {
 
 
 ValueFunction.prototype.cloneWithNewPoints = function(newPoints) {
+	if (!Array.isArray(newPoints))
+		throw new Error("newPoints: expected an array but got "+JSON.stringify(newPoints));
+	if (!newPoints.length)
+		throw new Error("No newPoints! this="+JSON.stringify(this));
 	return new ValueFunction(this.totalValue, newPoints, this.color, this.valuePerPoint);
 }
 
@@ -134,18 +2410,24 @@ ValueFunction.prototype.valueOf = function(envelope) {
 }
 
 /**
+ * @return the value of the given rectangle, according to this value function.
+ */
+ValueFunction.prototype.corner = function(envelope) {
+	if (!envelope)
+		throw new Error("envelope is not defined");
+	if (!('minx' in envelope))
+		throw new Error("envelope does not contain minx: "+JSON.stringify(envelope));
+	return this.valuePerPoint * jsts.algorithm.numPointsInEnvelope(this.points, envelope);
+}
+
+
+/**
  * @param direction direction of points relative to the corner: "NE", "SE", "NW" or "SW".
  * @return the smallest side-length of a square with the given corner {x,y}, containing at least the requested value.
  * @return Infinity if no such square exists.
  */
 ValueFunction.prototype.sizeOfSquareWithValue = function(corner, requestedValue, direction) {
-	var requestedNumOfPoints = Math.ceil(requestedValue / this.valuePerPoint);
-	if (isNaN(requestedNumOfPoints))
-		throw new Error("requestedNumOfPoints is NaN: requestedValue="+requestedValue+" valuePerPoint="+this.valuePerPoint)
-	if (requestedNumOfPoints==0) {
-		console.dir(this);
-		throw new Error("requestedNumOfPoints is 0: requestedValue="+requestedValue+" valuePerPoint="+this.valuePerPoint)
-	}
+	var requestedNumOfPoints = this.getNumOfPointsPerValue(requestedValue);
 
 	if (this.points.length<requestedNumOfPoints) return Infinity;
 
@@ -202,7 +2484,8 @@ ValueFunction.orderArrayByLandplotValueRatio = function(valueFunctions, landplot
 
 module.exports = ValueFunction;
 
-},{"underscore":59}],4:[function(require,module,exports){
+},{"underscore":58}],14:[function(require,module,exports){
+(function (global){
 /**
  * Utilities related to corners of rectilinear polygonal domains.
  *
@@ -210,14 +2493,12 @@ module.exports = ValueFunction;
  * @since 2014-04
  */
 
-var jsts = require('../../computational-geometry');
+var jsts = global.jsts
+
 var _ = require('underscore')
 _.mixin(require("argminmax"));
 
 var TRACE = function(){};
-//var TRACE = console.log;
-
-
 
 /*********************** 2 WALLS ************************/
 
@@ -633,7 +2914,80 @@ jsts.algorithm.rectanglesCoveringNorthernLevels = function(levelsParam) {
 	return covering;
 }
 
-},{"../../computational-geometry":2,"argminmax":29,"underscore":59}],5:[function(require,module,exports){
+}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{"argminmax":28,"underscore":58}],15:[function(require,module,exports){
+(function (global){
+/**
+ * Adds to jsts.geom.GeometryFactory some simple utility functions related to points.
+ * @author Erel Segal-Halevi
+ * @since 2014-03
+ */
+
+var jsts = global.jsts
+
+function coord(x,y)  {  return new jsts.geom.Coordinate(x,y); }
+
+/**
+ * Constructs an array of <code>Coordinate</code>s from a given array of {x,y} values.
+ */
+jsts.geom.GeometryFactory.prototype.createCoordinates = function(xy) {
+	return xy.map(function(point) {
+		return coord(point.x, point.y);
+	}, this);
+};
+
+
+var oldCreatePoint = jsts.geom.GeometryFactory.prototype.createPoint;
+
+
+/**
+ * Constructs a point from x and y values.
+ */
+jsts.geom.GeometryFactory.prototype.createPointFromXY = function(x,y) {
+	//console.log(x)
+	if (!isNaN(x) && !isNaN(y))
+		return oldCreatePoint.call(this, coord(x,y));
+	else if (!isNaN(x.x) && !isNaN(x.y))
+		return oldCreatePoint.call(this, coord(x.x, x.y));
+	else if (x instanceof jsts.geom.Coordinate)
+		return oldCreatePoint.call(this, x);
+	else
+		throw new Error("Illegal arguments to createPoint: "+JSON.stringify(x)+", "+JSON.stringify(y))
+};
+
+
+/**
+ * Constructs a point from x and y values.
+ *
+jsts.geom.GeometryFactory.prototype.createPoint = 
+//jsts.geom.GeometryFactory.prototype.createPointFromXY
+function(x,y) {
+	console.log(x)
+	if (!isNaN(x) && !isNaN(y))
+		return oldCreatePoint.call(this, coord(x,y));
+	else if (!isNaN(x.x) && !isNaN(x.y))
+		return oldCreatePoint.call(this, coord(x.x, x.y));
+	else if (x instanceof jsts.geom.Coordinate)
+		return oldCreatePoint.call(this, x);
+	else
+		throw new Error("Illegal arguments to createPoint: "+JSON.stringify(x)+", "+JSON.stringify(y))
+};
+*/
+
+/**
+ * Constructs an array of <code>Point</code>s from a given array of {x,y} points.
+ */
+jsts.geom.GeometryFactory.prototype.createPoints = function(xy) {
+	//console.dir(xy);
+	return xy.map(function(point) {
+		return 	this.createPointFromXY(point);
+	}, this);
+};
+
+
+}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{}],16:[function(require,module,exports){
+(function (global){
 /**
  * Divide a cake such that each color gets a fair number of points.
  *
@@ -641,11 +2995,33 @@ jsts.algorithm.rectanglesCoveringNorthernLevels = function(levelsParam) {
  * @since 2014-04
  */
 
-var jsts = require('../../computational-geometry');
 var _ = require("underscore");
-var utils = require('../../computational-geometry/lib/numeric-utils');
+_.mixin(require("argminmax"))
+
+var jsts = global.jsts
+require('./point-utils');  // jsts.algorithm.numPointsInXY
+var ValueFunction = require("./ValueFunction")
 
 var DEFAULT_ENVELOPE = new jsts.geom.Envelope(-Infinity,Infinity, -Infinity,Infinity);
+
+
+/**
+ * Returns the total value that the cake should have,
+ * such that each agent gets at least 1 value.
+ */
+function requiredTotalValue(numOfAgents, maxAspectRatio) {
+	if (maxAspectRatio<2) {
+		return Math.max(1, 4*numOfAgents-4)
+	} else {
+		return Math.max(1, 4*numOfAgents-5)
+	}
+}
+
+jsts.geom.GeometryFactory.prototype.createFairAndSquareDivision = function(agentsValuePoints, envelope, maxAspectRatio) {
+	var numOfAgents = agentsValuePoints.length;
+	var valueFunctions = ValueFunction.createArray(requiredTotalValue(numOfAgents,maxAspectRatio), agentsValuePoints)
+	return this.fairAndSquareDivision(valueFunctions, envelope, maxAspectRatio);
+}
 
 /**
  * Find a set of axis-parallel squares representing a fair-and-square division of the points.
@@ -659,77 +3035,122 @@ var DEFAULT_ENVELOPE = new jsts.geom.Envelope(-Infinity,Infinity, -Infinity,Infi
  *
  * @return a list of AxisParallelRectangle's.
  */
-jsts.geom.GeometryFactory.prototype.createFairAndSquareDivision = function(agents, envelope, maxAspectRatio) {
-	var numOfAgents = agents.length;
+jsts.geom.GeometryFactory.prototype.fairAndSquareDivision = function(valueFunctions, envelope, maxAspectRatio) {
+	var numOfAgents = valueFunctions.length;
 	if (numOfAgents==0)
 		return [];
 
 	if (!envelope)  envelope = DEFAULT_ENVELOPE;
 	if (!maxAspectRatio) maxAspectRatio=1;
+
 	if (numOfAgents==1) { // base case - single agent - find a square covering
-		var agent = agents[0];
-		var shape = this.createAxisParallelRectangle(
-			jsts.algorithm.squareWithMaxNumOfPoints(
-					agent, envelope, maxAspectRatio));
-		if (agent.color)
-			shape.color = agent.color;
+		var valueFunction = valueFunctions[0];
+
+		var pointsInEnvelope = jsts.algorithm.pointsInEnvelope(valueFunction.points, envelope);
+		landplot = jsts.algorithm.squareWithMaxNumOfPoints(
+				pointsInEnvelope, envelope, maxAspectRatio);
+
+		var shape = this.createAxisParallelRectangle(landplot);
+		if (valueFunction.color) shape.color = valueFunction.color;
 		return [shape];
 	}
 
-	// here there are at least two agents.
+	var midx = (envelope.maxx+envelope.minx)/2;
+	var midy = (envelope.maxy+envelope.miny)/2;
+	var lengthx = envelope.maxx-envelope.minx;
+	var lengthy = envelope.maxy-envelope.miny;
+
+	if (numOfAgents==2) { // simple case - two agents
+		var quarters = [
+			{corner: {x:envelope.minx,y:envelope.miny}, direction: "NE", dx:1, dy:1, square: new jsts.geom.Envelope(envelope.minx,midx, envelope.miny,midy)},
+			{corner: {x:envelope.maxx,y:envelope.miny}, direction: "NW", dx:-1, dy:1, square: new jsts.geom.Envelope(midx,envelope.maxx, envelope.miny,midy)},
+			{corner: {x:envelope.minx,y:envelope.maxy}, direction: "SE", dx:1, dy:-1, square: new jsts.geom.Envelope(envelope.minx,midx, midy,envelope.maxy)},
+			{corner: {x:envelope.maxx,y:envelope.maxy}, direction: "SW", dx:-1, dy:-1, square: new jsts.geom.Envelope(midx,envelope.maxx, midy,envelope.maxy)},
+		];
+
+		var iBestQuarters = valueFunctions.map(function(valueFunction) {
+			return _.argmax(quarters, function(quarter){ return valueFunction.valueOf(quarter.square); })
+		})
+		if (iBestQuarters[0]!=iBestQuarters[1]) { // Easy case: different choices
+			landPlot0 = quarters[iBestQuarters[0]].square;
+			landPlot1 = quarters[iBestQuarters[1]].square;
+		} else {   // Hard case: different choices
+			var iBestQuarter = iBestQuarters[0];
+			var bestQuarter = quarters[iBestQuarter];
+			var requestedValue = 1;
+			var bestCornerSquares = valueFunctions.map(function(valueFunction) {
+				return valueFunction.sizeOfSquareWithValue(bestQuarter.corner, requestedValue, bestQuarter.direction);
+			})
+			var meanCornerSquareSize = (bestCornerSquares[0]+bestCornerSquares[1])/2;
+			var cornerSquare = new jsts.geom.Envelope(
+				bestQuarter.corner.x, bestQuarter.corner.x+bestQuarter.dx*meanCornerSquareSize,
+				bestQuarter.corner.y, bestQuarter.corner.y+bestQuarter.dy*meanCornerSquareSize
+			);
+			var coverSquareSize = lengthx - meanCornerSquareSize;
+			var coverSquares = [];
+			for (var i=0; i<quarters.length; ++i) {
+				if (i==iBestQuarter) continue;
+				var curQuarter = quarters[i];
+				coverSquares.push(new jsts.geom.Envelope(
+					curQuarter.corner.x, curQuarter.corner.x+curQuarter.dx*coverSquareSize,
+					curQuarter.corner.y, curQuarter.corner.y+curQuarter.dy*coverSquareSize
+				));
+			}
+			if (bestCornerSquares[0]<=bestCornerSquares[1]) {
+				landPlot0 = cornerSquare;
+				landPlot1 = _.max(coverSquares, function(s){return valueFunctions[1].valueOf(s)});
+			} else {
+				landPlot1 = cornerSquare;
+				landPlot0 = _.max(coverSquares, function(s){return valueFunctions[0].valueOf(s)});
+			}
+		}
+		return [
+			this.fairAndSquareDivision([valueFunctions[0]], landPlot0, maxAspectRatio)[0],
+			this.fairAndSquareDivision([valueFunctions[1]], landPlot1, maxAspectRatio)[0],
+		]
+	}
+
+	// here, there are at least two agents.
 
 	var width = envelope.maxx-envelope.minx, height = envelope.maxy-envelope.miny;
 
 	var piece1, piece2;
 	if (width>=height) {
-		var cutPoint = (envelope.c+envelope.minx)/2;
-		var piece1 = new jsts.geom.Envelope(envelope.minx,cutPoint, envelope.miny,envelope.maxy);
-		var piece2 = new jsts.geom.Envelope(cutPoint,envelope.maxx, envelope.miny,envelope.maxy);
+		var piece1 = new jsts.geom.Envelope(envelope.minx,midx, envelope.miny,envelope.maxy);
+		var piece2 = new jsts.geom.Envelope(midx,envelope.maxx, envelope.miny,envelope.maxy);
 	} else {  // width<height
-		var cutPoint = (envelope.maxy+envelope.miny)/2;
-		var piece1 = new jsts.geom.Envelope(envelope.minx,envelope.maxx, envelope.miny,cutPoint);
-		var piece2 = new jsts.geom.Envelope(envelope.minx,envelope.maxx, cutPoint,envelope.maxy);
+		var piece1 = new jsts.geom.Envelope(envelope.minx,envelope.maxx, envelope.miny,midy);
+		var piece2 = new jsts.geom.Envelope(envelope.minx,envelope.maxx, midy,envelope.maxy);
 	}
-	var partners1 = [], partners2 = [];
-	for (var i=0; i<agents.length; ++i) {
-		partners1[i] = [i,numPartners(agents[i],piece1,numOfAgents,maxAspectRatio)];
-		partners2[i] = [i,numPartners(agents[i],piece2,numOfAgents,maxAspectRatio)];
-	}
-	var sortByPartnersDecreasingOrder = function(a,b) { return b[1]-a[1]; }
-	partners1.sort(sortByPartnersDecreasingOrder);
 
-	var agentsForPiece1 = [], agentsForPiece2 = [];
-	for (var i=0; i<partners1.length; ++i) {
-		var agentIndex = partners1[i][0];
-		if (agentsForPiece1.length<partners1[i][1])
-			agentsForPiece1.push(agents[agentIndex]);
+	// Eval Auction on piece1:
+	valueFunctions.forEach(function(valueFunction) {
+		valueFunction.bid1 = valueFunction.valueOf(piece1);
+	})
+	// Sort by decreasing order of bids:
+	valueFunctions.sort(function(a,b){return b.bid1-a.bid1})
+	// Find the h-index:
+	for (var h=0; h<valueFunctions.length; ++h) {
+		if (valueFunction[h].bid1 >= requiredTotalValue(h+1, maxAspectRatio))
+			agentsForPiece1.push(valueFunction[h]);
 		else
-			agentsForPiece2.push(agents[agentIndex]);
+			agentsForPiece2.push(valueFunction[h]);
 	}
-//	if (agentsForPiece1.length<numOfAgents && agentsForPiece2<numOfAgents) {
-		var fairDivision1 = this.createFairAndSquareDivision(agentsForPiece1, piece1, maxAspectRatio);
-		var fairDivision2 = this.createFairAndSquareDivision(agentsForPiece2, piece2, maxAspectRatio);
+
+	if (agentsForPiece1.length<numOfAgents && agentsForPiece2<numOfAgents) {
+		var fairDivision1 = this.fairAndSquareDivision(agentsForPiece1, piece1, maxAspectRatio);
+		var fairDivision2 = this.fairAndSquareDivision(agentsForPiece2, piece2, maxAspectRatio);
 		return fairDivision1.concat(fairDivision2);
-//	} else {
-//		return [];
-//	}
+	} else {
+		return [];
+	}
 }
 
 
 /*---------------- UTILS ---------------*/
 
-var numPartners = function(points, envelope, n, maxAspectRatio) {
-	var A, B, T;
-	if (maxAspectRatio<2) {
-		A=6; B=8; T=2;
-	} else {
-		A=4; B=5; T=1;
-	}
-	var pointsInside = utils.numPointsInXY(points, envelope);
-	var normalizedValue = (pointsInside/points.length*(A*n-B));
-	if (normalizedValue<T)
-		return 0;
-
+var numPartners = function(valueFunction, envelope, n, maxAspectRatio) {
+	var normalizedValue = valueFunction.valueOf(envelope);
 	for (var k=1; k<=n-2; k++) {
 		if (A*k-B<=normalizedValue && normalizedValue<A*(k+1)-B)
 			return k;
@@ -741,7 +3162,26 @@ var numPartners = function(points, envelope, n, maxAspectRatio) {
 	return n;
 }
 
-},{"../../computational-geometry":2,"../../computational-geometry/lib/numeric-utils":24,"underscore":59}],6:[function(require,module,exports){
+
+var giveLandplotToSingleAgentIfValueAtLeast1 = function(valueFunction, landplot) {
+	var value = valueFunction.valueOf(landplot);
+	if (value>=1) {
+		TRACE(1,"++ best landplot has value "+value
+//				+": "+JSON.stringify(landplot)
+				);
+		if (valueFunction.color) landplot.color = valueFunction.color;
+		return [landplot];
+	} else {
+		TRACE(1,"-- best landplot has value "+value
+//				+": "+JSON.stringify(valueFunction)
+				);
+		return [];
+	}
+}
+
+}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{"./ValueFunction":13,"./point-utils":22,"argminmax":28,"underscore":58}],17:[function(require,module,exports){
+(function (global){
 /**
  * Divide a cake such that each color gets a square with 1/2n of its points.
  *
@@ -749,17 +3189,17 @@ var numPartners = function(points, envelope, n, maxAspectRatio) {
  * @since 2014-04
  */
 
-var jsts = require('../../computational-geometry');
+var jsts = global.jsts
 require("./corners");
 require("./rectilinear-polygon-division");
-var numutils = require('../../computational-geometry/lib/numeric-utils');
+var numutils = require('./numeric-utils');
+var ValueFunction = require("./ValueFunction");
 
 var _ = require("underscore");
 _.mixin(require("argminmax"));
 _.mixin(require("./rainbow"));
 
 var util = require("util");
-var ValueFunction = require("./ValueFunction");
 
 var DEFAULT_ENVELOPE = new jsts.geom.Envelope(-Infinity,Infinity, -Infinity,Infinity);
 
@@ -777,7 +3217,9 @@ function TRACE_NO_LANDPLOT(valueFunctions) {
 
 
 function TRACE_PARTITION(numOfAgents, s, y, k, northAgents, northPlots, southAgents, southPlots) {
+	/*
 	TRACE(numOfAgents,s+"(k="+k+", y="+round2(y)+"): "+southAgents.length+" south agents ("+_.pluck(southAgents,"color")+") got "+southPlots.length+" plots and "+northAgents.length+" north agents ("+_.pluck(northAgents,"color")+") got "+northPlots.length+" plots.");
+	*/
 }
 
 var roundFields3 = Math.roundFields.bind(0, 3);
@@ -849,7 +3291,7 @@ jsts.algorithm.getOpenSides = function(envelope) {
  * The valuation of an agent is represented as an array of points with fields {x,y}. Each point has the same value.
  *    Each agent may also have a field "color", that is copied to the rectangle.
  *
- * @param envelope object with fields {minx,miny, maxx,maxy}; defines the boundaries for the landplots.
+ * @param envelope object with fields {minx,miny, maxx,maxy}; defines the boundaries for the landplots. Values may be +-Infinity.
  *
  * @return an array of squares, one per square per agent.
  */
@@ -1652,2526 +4094,8 @@ jsts.algorithm.mapOpenSidesToNormalizedAlgorithm[2] = (norm2Walls);
 jsts.algorithm.mapOpenSidesToNormalizedAlgorithm[3] = (norm1Walls);
 jsts.algorithm.mapOpenSidesToNormalizedAlgorithm[4] = (norm0Walls);
 
-},{"../../computational-geometry":2,"../../computational-geometry/lib/numeric-utils":24,"./ValueFunction":3,"./corners":4,"./rainbow":8,"./rectilinear-polygon-division":9,"argminmax":29,"underscore":59,"util":66}],7:[function(require,module,exports){
-var jsts = require("../../computational-geometry");
-require("./corners");
-require("./fair-division-of-points");
-require("./half-proportional-division-staircase");
-require("./rectilinear-polygon-division");
-require("./test-division-algorithm")
-jsts.stringify = function(object) {
-	if (object instanceof Array) {
-		return object.map(function(cur) {
-			return cur.toString();
-		});
-	}
-	else return object.toString();
-}
-module.exports = jsts;
-
-},{"../../computational-geometry":2,"./corners":4,"./fair-division-of-points":5,"./half-proportional-division-staircase":6,"./rectilinear-polygon-division":9,"./test-division-algorithm":10}],8:[function(require,module,exports){
-/**
- * Add a color field to a list of objects.
- *
- * @author Erel Segal-Halevi
- * @since 2014-04
- */
-
-var _ = require("underscore");
-
-var colors = ['#000','#f00','#0f0','#ff0','#088','#808','#880'];
-var color = function(i) {return colors[i % colors.length]};
-
-module.exports = {
-	color: color,
-
-	/**
-	 * Duplicate a given object a given number of times, adding a "color" field to each copy.
-	 *
-	 * @param object
-	 * @param count
-	 * @return an array with objects similar to "object" but with an added color field.
-	 */
-	rainbowDuplicate: function(object,count) {
-		var rainbow = [];
-		for (var i=0; i<count; ++i) {
-			var newObject = _.clone(object);
-			newObject.color = color(i);
-			rainbow.push(newObject);
-		}
-		return rainbow;
-	}
-};
-
-},{"underscore":59}],9:[function(require,module,exports){
-/**
- * Fairly cut a SimpleRectilinearPolygon such that each agent receives a square.
- * 
- * @author Erel Segal-Halevi
- * @since 2014-09
- */
-
-var jsts = require("../../computational-geometry");
-var SimpleRectilinearPolygon = jsts.geom.SimpleRectilinearPolygon;
-var ValueFunction = require("./ValueFunction");
-var _ = require("underscore");
-_.mixin(require("argminmax"));
-var util = require("util");
-
-function logValueFunctions(valueFunctions) {
-	console.log(util.inspect(valueFunctions,{depth:3}));
-}
-
-function TRACE (numOfAgents, s) {
-	console.log(Array(Math.max(0,6-numOfAgents)).join("   ")+s);
-};
-
-function TRACE_NO_LANDPLOT(valueFunctions) {
-	logValueFunctions(valueFunctions);
-}
-
-function TRACE_PARTITION(numOfAgents, s, y, k, northAgents, northPlots, southAgents, southPlots) {
-	TRACE(numOfAgents,s+"(k="+k+", y="+round2(y)+"): "+southAgents.length+" south agents ("+_.pluck(southAgents,"color")+") got "+southPlots.length+" plots and "+northAgents.length+" north agents ("+_.pluck(northAgents,"color")+") got "+northPlots.length+" plots.");
-}
-
-
-/**
- * @param knob a knob which is first in a knob-chain of a continuator.
- * @param valueFunctions the candidate squares will be inserted in the valueFunction.candidateSquares array.
- * @param cornerFilterFunction used to filter the corners.
- * @return numOfCandidatesPerKnob total number of candidates for the given knob.
- */
-function findCandidateSquaresInKnob(knob, valueFunctions, requiredLandplotValue, cornerFilterFunction) {
-	var corner = knob.c0;
-	var cornerCount = Math.min(4,knob.knobCount+1);
-	var knobLength = knob.length();
-	var numOfCandidatesPerKnob = 0;
-	for (var i=0; i<cornerCount; ++i) {   // loop over all (convex) corners of the continuator:
-		if (!cornerFilterFunction || cornerFilterFunction(corner)) {
-			var directionOfPolygonInterior = corner.directionOfPolygonInterior();
-			valueFunctions.forEach(function(valueFunction) {
-				var squareSize = valueFunction.sizeOfSquareWithValue(corner, requiredLandplotValue, directionOfPolygonInterior);
-				if (squareSize<=knobLength) {
-					var x0 = corner.x
-					  , x1 = corner.x + corner.signOfPolygonInteriorX()*squareSize
-					  , y0 = corner.y
-					  , y1 = corner.y + corner.signOfPolygonInteriorY()*squareSize;
-					numOfCandidatesPerKnob++;
-					if (valueFunction.candidateSquares)
-						valueFunction.candidateSquares.push({minx:Math.min(x0,x1), miny:Math.min(y0,y1), maxx:Math.max(x0,x1), maxy:Math.max(y0,y1), size:squareSize, corner:{x:corner.x,y:corner.y}, direction:directionOfPolygonInterior});
-				}
-			});
-		}
-		corner = corner.next;
-	};
-	return numOfCandidatesPerKnob;
-}
-
-
-/**
- * @param agentsValuePoints an array of n>=1 or more valuation functions, represented by value points (x,y).
- * @param cake a SimpleRectilinearPolygon representing the cake to divide.
- * @return an array of n squares (minx,maxx,miny,maxy) representing the shares of the n agents.
- */
-jsts.algorithm.rectilinearPolygonDivision = function recursive(valueFunctions, cake, requiredLandplotValue) {
-	var numOfAgents = valueFunctions.length;
-	TRACE(numOfAgents,numOfAgents+" agents("+_.pluck(valueFunctions,"color")+"), trying to give each a value of "+requiredLandplotValue+" from a cake "+cake.toString());
-	var USE_FLOATING_CORNERS = false;
-	var cakeCoveringData = new jsts.algorithm.MinSquareCoveringData(cake);
-
-	// Start by removing knobs that nobody wants:
-	var cakeHasChanged = false;
-	for (;;) {
-		var cakeHasChangedInIteration = false;
-		var knobs = cakeCoveringData.findAllSegmentsWithContinuators();
-		for (var i=0; i<knobs.length; ++i) {
-			var knob = knobs[i];
-			TRACE(numOfAgents,"\tchecking knob "+knob.toString());
-			var numOfCandidatesPerKnob = findCandidateSquaresInKnob(knob, valueFunctions, requiredLandplotValue);
-			if (!numOfCandidatesPerKnob) {
-				TRACE(numOfAgents,"\t-- No demand - removing knob");
-				cakeCoveringData.removeErasableRegion(knob);
-				cakeHasChangedInIteration = cakeHasChanged = true;
-				break;
-			}
-		}
-		if (cakeCoveringData.isEmpty())
-			break;
-		if (!cakeHasChangedInIteration)  // no knob was removed - proceed to division
-			break;
-	}
-
-	if (cakeCoveringData.isEmpty()) { // no more rectangles
-		TRACE(numOfAgents, "-- no knob with the required value "+requiredLandplotValue);
-		if (requiredLandplotValue<=1)
-			TRACE_NO_LANDPLOT(valueFunctions);
-		return [];
-	}
-
-	if (cakeHasChanged) 
-		cake = cakeCoveringData.getResidualPolygon();
-	var originalCakeCoveringData = new jsts.algorithm.MinSquareCoveringData(cake);
-
-	valueFunctions.forEach(function(valueFunction) {	
-		valueFunction.candidateSquares = [];
-	});
-
-	while (!cakeCoveringData.isEmpty()) {
-		var knob = cakeCoveringData.findSegmentWithContinuator();
-		TRACE(numOfAgents,"\tprocessing knob "+knob.toString());
-
-		var numOfCandidatesPerKnob = findCandidateSquaresInKnob(knob, valueFunctions, requiredLandplotValue,
-			/* corner filter = */USE_FLOATING_CORNERS? null: function(corner) {	return originalCakeCoveringData.hasConvexCorner({x:corner.x,y:corner.y});}
-		);
-
-		cakeCoveringData.removeErasableRegion(knob);
-		TRACE(numOfAgents,"\t ++ found "+numOfCandidatesPerKnob+" candidates")
-	}
-
-	valueFunctions.forEach(function(valueFunction) {
-		valueFunction.square = _.min(valueFunction.candidateSquares, function(square){
-			return square.size
-		});
-	});
-	
-	// get the agent with the square with the smallest height overall:
-	var iWinningAgent = _.argmin(valueFunctions, function(valueFunction) {
-		return valueFunction.square.size;
-	});
-	
-	var winningAgent = valueFunctions[iWinningAgent];
-	var winningSquare = winningAgent.square;
-
-	if (!winningSquare || !isFinite(winningSquare.size)) {
-		TRACE(numOfAgents, "-- no square with the required value "+requiredLandplotValue);
-		if (requiredLandplotValue<=1)
-			TRACE_NO_LANDPLOT(valueFunctions);
-		return [];
-	}
-
-	var landplot = winningSquare;
-	if (winningAgent.color) landplot.color = winningAgent.color;
-	TRACE(numOfAgents, "++ agent "+iWinningAgent+" gets the landplot "+JSON.stringify(landplot));
-
-	if (valueFunctions.length==1)
-		return [landplot];
-
-	var remainingValueFunctions = valueFunctions.slice(0,iWinningAgent).concat(valueFunctions.slice(iWinningAgent+1,valueFunctions.length));
-	var remainingCake = cake.removeRectangle(landplot);
-	var remainingLandplots = recursive(remainingValueFunctions, remainingCake, requiredLandplotValue);
-	remainingLandplots.push(landplot);
-	return remainingLandplots;
-}
-
-
-},{"../../computational-geometry":2,"./ValueFunction":3,"argminmax":29,"underscore":59,"util":66}],10:[function(require,module,exports){
-/**
- * Divide a cake such that each color gets a square with 1/2n of its points.
- * 
- * @author Erel Segal-Halevi
- * @since 2014-04
- */
-
-var jsts = require('../../computational-geometry');
-var ValueFunction = require("./ValueFunction");
-
-var _ = require("underscore");
-_.mixin(require("argminmax"));
-
-var util = require("util");
-var ValueFunction = require("./ValueFunction");
-
-/**
- * Test the given algorithm with the given args (array) and make sure that every agent gets the required num of points.
- * 
- * @param algorithm a cake-cutting algorithm.
- * @param args [array] the arguments with which to call the algorithm. The first argument must be the agentsValuePoints.
- * @param requiredNum [int] number of points that should be in the landplot of every agent.
- * 
- * @return the landplots (the result of the division algorithm)
- */
-jsts.algorithm.testDivisionAlgorithm = function(algorithm, args, requiredNum)  {
-	var landplots = algorithm.apply(0, args);
-	var agentsValuePoints = args[0];
-	
-	if (landplots.length<agentsValuePoints.length) {
-		console.error(jsts.algorithm.agentsValuePointsToString(agentsValuePoints));
-		throw new Error("Not enough land-plots: "+JSON.stringify(landplots));
-	}
-	agentsValuePoints.forEach(function(points) {
-		if (points instanceof ValueFunction)
-			points = points.points;
-		landplots.forEach(function(landplot) {
-			if (points.color == landplot.color) {
-				var pointsInLandplot = jsts.algorithm.numPointsInEnvelope(points, landplot);
-				if (pointsInLandplot<requiredNum) {
-					throw new Error("Not enough points for "+landplot.color+": expected "+requiredNum+" but found only "+pointsInLandplot+" from "+JSON.stringify(points)+" in landplot "+JSON.stringify(landplot));
-				}
-			}
-		})
-	})
-	return landplots;
- }
-
-
-},{"../../computational-geometry":2,"./ValueFunction":3,"argminmax":29,"underscore":59,"util":66}],11:[function(require,module,exports){
-(function (global){
-/**
- * Adds to jsts.algorithm some utility functions related to affine transformations.
- *
- * The following fields are supported:
- * - translate[0] (real)  - added to the x value.
- * - translate[1] (real)  - added to the y value.
- * - scale      (real)    - multiplies the x and y values after translation.
- * - rotateRadians        - rotate in positive directions by given number of radians.
- * - rotateQuarters       - rotate in positive directions by given number of quarters (=90 degrees).
- * - reflectXaxis  (boolean) - convert y to minus y.
- * - reflectYaxis  (boolean) - convert x to minus x.
- * - reflectXY  (boolean) - true to swap x with y after scaling.
- *
- * @author Erel Segal-Halevi
- * @since 2014-04
- */
-
-/**
- * Apply a single transformation on a single point.
- * @param t a transformation-description object with one or more fields from {translate, scale, rotateRadians, rotateQuarters, reflectXaxis, reflectYaxis, reflectXY}
- * @param point {x:..,y:..}
- */
-
-
-var jsts = global.jsts;
-
-var transformPoint1 = function(t, point) {
-	if (t.translate) {
-		point.x += t.translate[0];
-		point.y += t.translate[1];
-	}
-	if (t.scale) {
-		point.x *= t.scale;
-		point.y *= t.scale;
-	}
-	if (t.rotateRadians) {  // PROBLEM: rounding errors
-		var sin = Math.sin(t.rotateRadians);
-		var cos = Math.cos(t.rotateRadians);
-		var newX = cos*point.x - sin*point.y;
-		var newY = sin*point.x + cos*point.y;
-		point.x = newX;
-		point.y = newY;
-	}
-	if (t.rotateQuarters) {
-		var q = (t.rotateQuarters+4)%4;
-		var sin = q==1? 1: q==3? -1: 0;
-		var cos = q==0? 1: q==2? -1: 0;
-		var newX = (cos==0? 0: cos*point.x) - (sin==0? 0: sin*point.y);
-		var newY = (sin==0? 0: sin*point.x) + (cos==0? 0: cos*point.y);
-		point.x = newX;
-		point.y = newY;
-	}
-	if (t.reflectXaxis) {
-		point.y = -point.y;
-	}
-	if (t.reflectYaxis) {
-		point.x = -point.x;
-	}
-	if (t.reflectXY) {
-		var z = point.x;
-		point.x = point.y;
-		point.y = z;
-	}
-}
-
-
-/**
- * Apply an array of transformations on a single point.
- * @param transformation array with transformation-description objects.
- * @param the changed point object.
- */
-jsts.algorithm.transformPoint = function(transformation, point) {
-	if (transformation.forEach)
-		transformation.forEach(function(t) {
-			transformPoint1(t,point);
-		});
-	else
-		transformPoint1(transformation,point);
-	return point;
-};
-
-/**
- * @return the given point after the application of the given transformations.
- * @param transformation array with transformation-description objects.
- * @param point {x,y}
- * @note the input point is NOT changed.
- */
-jsts.algorithm.transformedPoint = function(transformation, point) {
-	return jsts.algorithm.transformPoint(transformation, {x:point.x, y:point.y});
-};
-
-/**
- * Transforms an AxisParallelRectangle using the given transformation.
- * @param rect of class AxisParallelRectangle
- * @param transformation an array of transformation-description objects.
- */
-jsts.algorithm.transformAxisParallelRectangle = function(transformation, rect) {
-	var newMin = jsts.algorithm.transformPoint(transformation, {x:rect.minx, y:rect.miny});
-	var newMax = jsts.algorithm.transformPoint(transformation, {x:rect.maxx, y:rect.maxy});
-	rect.minx = Math.min(newMin.x,newMax.x);	rect.miny = Math.min(newMin.y,newMax.y);
-	rect.maxx = Math.max(newMin.x,newMax.x);	rect.maxy = Math.max(newMin.y,newMax.y);
-	return rect;
-};
-
-/**
- * @return the given rectangle after the application of the given transformations.
- * @param rect class AxisParallelRectangle
- * @param transformation an array of transformation-description objects.
- */
-jsts.algorithm.transformedAxisParallelRectangle = function(transformation, rect) {
-	var newMin = jsts.algorithm.transformPoint(transformation, {x:rect.minx, y:rect.miny});
-	var newMax = jsts.algorithm.transformPoint(transformation, {x:rect.maxx, y:rect.maxy});
-	return 	rect.factory.createAxisParallelRectangle(newMin.x,newMin.y, newMax.x,newMax.y);
-};
-
-/**
-* @return a transformation that reverses the effects of the given transformation.
- */
-var reverseSingleTransformation = function(t) {
-	var r = {};
-	if (t.translate)
-		r.translate = [-t.translate[0], -t.translate[1]];
-	if (t.scale)
-		r.scale = 1/t.scale;
-	if (t.rotateRadians)
-		r.rotateRadians = -t.rotateRadians;
-	if (t.rotateQuarters)
-		r.rotateQuarters = (4-t.rotateQuarters)%4;
-	if (t.reflectXaxis)
-		r.reflectXaxis = t.reflectXaxis;
-	if (t.reflectYaxis)
-		r.reflectYaxis = t.reflectYaxis;
-	if (t.reflectXY)
-		r.reflectXY = t.reflectXY;
-	return r;
-}
-
-/**
- * @return an array of transformations that reverses the effects of the given array of transformations.
- */
-jsts.algorithm.reverseTransformation = function(transformation) {
-	var reverseTransformation = transformation.map(reverseSingleTransformation);
-	reverseTransformation.reverse();
-	return reverseTransformation;
-};
-
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],12:[function(require,module,exports){
-(function (global){
-  /**
-   * Represents an axis-parallel rectangle.
-   * Defined by: minx, miny, maxx, maxy.
-   * @author Erel Segal-Halevi
-   * @since 2014-03
-   */
-
-  var jsts = global.jsts;
-
-  /**
-   * @requires jsts/geom/Geometry.js
-   */
-
-  /**
-   * @extends {jsts.geom.Geometry}
-   * @constructor
-   */
-  jsts.geom.AxisParallelRectangle = function(minx,miny, maxx,maxy, factory) {
-    this.minx = Math.min(minx,maxx);
-    this.miny = Math.min(miny,maxy);
-    this.maxx = Math.max(minx,maxx);
-    this.maxy = Math.max(miny,maxy);
-    this.factory = factory;
-  };
-
-  jsts.geom.AxisParallelRectangle.prototype = Object.create(jsts.geom.Geometry.prototype);
-  jsts.geom.AxisParallelRectangle.constructor = jsts.geom.AxisParallelRectangle;
-
-  /**
-   * @return {boolean}
-   */
-  jsts.geom.AxisParallelRectangle.prototype.isEmpty = function() {
-    return (this.minx==this.maxx || this.miny==this.maxy);
-  };
-
-  jsts.geom.AxisParallelRectangle.prototype.getCoordinates = function() {
-	  throw new Error("not implemented");
-	  return [];
-  };
-
-  jsts.geom.AxisParallelRectangle.prototype.getExteriorRing = function() {
-	  return this;
-  };
-
-  jsts.geom.AxisParallelRectangle.prototype.getInteriorRingN = function(n) {
-	  throw new Error("not implemented");
-  };
-
-  jsts.geom.AxisParallelRectangle.prototype.getNumInteriorRing = function() {
-    return 0;
-  };
-
-  /**
-   * Returns the area of this <code>Polygon</code>
-   *
-   * @return the area of the polygon.
-   */
-  jsts.geom.AxisParallelRectangle.prototype.getArea = function() {
-	  if (!this.area)  {
-		  this.area = (this.maxx-this.minx)*(this.maxy-this.miny);
-	  }
-	  return this.area;
-  };
-
-  /**
-   * Returns the perimeter of this <code>Polygon</code>
-   *
-   * @return the perimeter of the polygon.
-   */
-  jsts.geom.AxisParallelRectangle.prototype.getLength = function() {
-	  if (!this.length)  {
-		  this.length = 2*((maxx-minx)+(maxy-miny));
-	  }
-	  return this.length;
-  };
-
-  /**
-   * Computes the boundary of this geometry
-   *
-   * @return {Geometry} a linear geometry (which may be empty).
-   * @see Geometry#getBoundary
-   */
-  jsts.geom.AxisParallelRectangle.prototype.getBoundary = function() {
-	  return this;
-  };
-
-  jsts.geom.AxisParallelRectangle.prototype.computeEnvelopeInternal = function() {
-    return new jsts.geom.Envelope(this.minx, this.maxx, this.miny, this.maxy);
-  };
-
-  /**
-   * This was part of JSTS 0.10, but does not work well in JSTS 1.2.1, so I had to add it myself.
-   */
-  jsts.geom.AxisParallelRectangle.prototype.getEnvelopeInternal = function() {
-    if (!this.cacheEnvelopeInternal)
-       this.cacheEnvelopeInternal = this.computeEnvelopeInternal()
-    return this.cacheEnvelopeInternal
-  };
-
-
-  jsts.geom.AxisParallelRectangle.prototype.getDimension = function() {
-    return 2;
-  };
-
-  jsts.geom.AxisParallelRectangle.prototype.getBoundaryDimension = function() {
-    return 1;
-  };
-
-
-  /**
-   * @param {Geometry}
-   *          other
-   * @param {number}
-   *          tolerance
-   * @return {boolean}
-   */
-  jsts.geom.AxisParallelRectangle.prototype.equalsExact = function(other, tolerance) {
-    if (!this.isEquivalentClass(other)) {
-      return false;
-    }
-    if (this.isEmpty() && other.isEmpty()) {
-      return true;
-    }
-    if (this.isEmpty() !== other.isEmpty()) {
-      return false;
-    }
-    return this.minx==other.minx && this.maxx==other.maxx && this.miny==other.miny && this.maxy==other.maxy;
-  };
-
-  jsts.geom.AxisParallelRectangle.prototype.compareToSameClass = function(o) {
-	  return this.minx==other.minx && this.maxx==other.maxx && this.miny==other.miny && this.maxy==other.maxy;
-  };
-
-  jsts.geom.AxisParallelRectangle.prototype.apply = function(filter) {
-	  throw new Error("not implemented");
-  };
-
-  jsts.geom.AxisParallelRectangle.prototype.apply2 = function(filter) {
-	  throw new Error("not implemented");
-  };
-
-  /**
-   * Creates and returns a full copy of this {@link Polygon} object. (including
-   * all coordinates contained by it).
-   *
-   * @return a clone of this instance.
-   */
-  jsts.geom.AxisParallelRectangle.prototype.clone = function() {
-    return new jsts.geom.AxisParallelRectangle(this.minx, this.miny, this.maxx, this.maxy, this.factory);
-  };
-
-  jsts.geom.AxisParallelRectangle.prototype.normalize = function() {
-  };
-
-  jsts.geom.AxisParallelRectangle.prototype.intersects = function(other) {
-	  if (other instanceof jsts.geom.AxisParallelRectangle) {
-		  return (
-				  this.maxx>=other.minx && other.maxx>=this.minx &&
-				  this.maxy>=other.miny && other.maxy>=this.miny
-				 )
-	  } else {
-		  throw new Error("not implemented for "+other);
-	  }
-  }
-
-  var Location = jsts.geom.Location;
-
-//  jsts.geom.AxisParallelRectangle.prototype.relate2 = function(other) {
-//	var im = new jsts.geom.IntersectionMatrix();
-//	var II = (
-//			  this.maxx>other.minx && other.maxx>this.minx &&
-//			  this.maxy>other.miny && other.maxy>this.miny
-//			 );
-//    im.setAtLeast('FFFFFFFFF');
-//	im.set(Location.INTERIOR, Location.INTERIOR, II? "2": "F");
-//	return im;
-//  }
-
-  jsts.geom.AxisParallelRectangle.prototype.overlaps = function(other) {
-	  if (other instanceof jsts.geom.AxisParallelRectangle) {
-		  return !this.interiorDisjoint(other) && !this.contains(other) && !other.contains(this);
-	  } else {
-		  throw new Error("not implemented for "+other);
-	  }
-  }
-
-  jsts.geom.AxisParallelRectangle.prototype.interiorDisjoint = function(other) {
-	  if (other instanceof jsts.geom.AxisParallelRectangle) {
-		  return (
-				  this.maxx<=other.minx || other.maxx<=this.minx ||
-				  this.maxy<=other.miny || other.maxy<=this.miny
-				 );
-	  } else {
-		  throw new Error("not implemented for "+other);
-	  }
-  }
-
-  jsts.geom.AxisParallelRectangle.prototype.contains = function(other) {
-    var x,y;
-    if (other.x)
-      x = other.x;
-    if (other.y)
-      y = other.y;
-    if (other.coordinate) {
-      x = other.coordinate.x;
-      y = other.coordinate.y;
-    }
-    if (other.getCoordinate) {
-      x = other.getCoordinate().x;
-      y = other.getCoordinate().y;
-    }
-
-    if (x!=undefined && y!=undefined) {
-      return (
-		  this.minx<x && x<this.maxx &&
-		  this.miny<y && y<this.maxy
-		 )
-    } else {
-      console.dir(other);
-      throw new Error("AxisParallelRectangle.contains is not implemented for "+typeof other);
-    }
-  }
-
-  /**
-   * @return {String} String representation of Polygon type.
-   */
-  jsts.geom.AxisParallelRectangle.prototype.getGeometryType = function() {
-    return 'Polygon';
-  };
-
-  /**
-   * @return {String} String representation of Polygon type.
-   */
-  jsts.geom.AxisParallelRectangle.prototype.toString = function() {
-    return 'RECTANGLE(['+this.minx+","+this.maxx+"]x["+this.miny+","+this.maxy+"])";
-  };
-
-  jsts.geom.AxisParallelRectangle.prototype.CLASS_NAME = 'jsts.geom.AxisParallelRectangle';
-
-
-  /**
-   * Constructs a <code>Polygon</code> that is an axis-parallel rectangle with the given x and y values.
-   *
-   * Can be called either with 4 parameters (minx,miny, maxx,maxy)
-   * or with a single parameter with 4 fields (minx,miny, maxx,maxy).
-   */
-  jsts.geom.GeometryFactory.prototype.createAxisParallelRectangle = function(minx,miny, maxx,maxy) {
-	if (arguments.length==1) {
-		var envelope = minx;
-		return new jsts.geom.AxisParallelRectangle(envelope.minx, envelope.miny, envelope.maxx, envelope.maxy, this);
-	} else if (arguments.length==4) {
-		return new jsts.geom.AxisParallelRectangle(minx,miny, maxx,maxy, this);
-	} else {
-		throw new Error("createAxisParallelRectangle expected 1 or 4 arguments, but found "+arguments.length)
-	}
-  };
-
-}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],13:[function(require,module,exports){
-/**
- * Add some extensions to the doubly-linked list of the JSClass library.
- */
-
-var DoublyLinkedList = require('jsclass/src/linked_list').LinkedList.Doubly.Circular;
-
-DoublyLinkedList.prototype.toString = function() {
-		var s = "";
-		this.forEach(function(node, i) {
-			var sfield = "";
-			for (var field in node) {
-				if (node.hasOwnProperty(field) && field!='prev' && field !='next' && field !='list') {
-					if (sfield) sfield+=",";
-					sfield += field+":"+node[field];
-				}
-			}
-
-			if (s) s+=",\n ";
-			s +="{"+sfield+"}"
-		});
-		return "["+s+"]";
-}
-
-DoublyLinkedList.prototype.pluck = function(field) {
-		var values = [];
-		this.forEach(function(node) {
-			values.push(node[field]);
-		})
-		return values;
-}
-
-DoublyLinkedList.prototype.isEmpty = function() {
-		return this.length == 0; 
-}
-
-},{"jsclass/src/linked_list":40}],14:[function(require,module,exports){
-(function (global){
-/**
- * Calculate a largest subset of interior-disjoint shapes from a given set of candidates.
- *
- * Asynchronous version, with option to interrupt.
- *
- * @note For a synchronous function, see MaxDisjointSetSync.js
- *
- * CREDITS:
- * * barry-johnson: http://stackoverflow.com/a/22593680/827927
- * * vkurchatkin:   http://stackoverflow.com/a/22604420/827927
- *
- * @author Erel Segal-Halevi
- * @since 2014-03
- */
-
-var Combinatorics = require('js-combinatorics');
-var _ = require('underscore');
-
-var jsts = global.jsts;
-require("./intersection-cache");
-require("./partition-utils");
-var async = require("async");
-
-var TRACE_PERFORMANCE = false;
-
-
-
-/*--- Main Algorithm ---*/
-
-/**
- * Calculate a largest subset of non-intersecting shapes from a given set of candidates.
- * @param candidates a set of shapes (geometries).
- * @param stopAtCount - After finding this number of disjoint shapes, don't look further (default: infinity)
- * @return a subset of these shapes, that are guaranteed to be pairwise disjoint.
- *
- * @note uses a simple exact divide-and-conquer algorithm that can be exponential in the worst case.
- * For more complicated algorithms that are provably more efficient (in theory) see: https://en.wikipedia.org/wiki/Maximum_disjoint_set
- */
-jsts.algorithm.MaximumDisjointSetSolver = function(candidates, stopAtCount) {
-	if (TRACE_PERFORMANCE) var startTime = new Date();
-	candidates = jsts.algorithm.prepareDisjointCache(jsts.algorithm.prepareShapesToPartition(candidates));
-	if (TRACE_PERFORMANCE) 	console.log("Preparation time = "+(new Date()-startTime)+" [ms]");
-
-	this.candidates = candidates;
-	this.stopAtCount = stopAtCount? stopAtCount: Infinity;
-	this.interrupted = false;
-}
-
-jsts.algorithm.MaximumDisjointSetSolver.prototype.interrupt = function(){
-    this.interrupted = true;
-};
-
-
-/**
- * Find a largest interior-disjoint set of rectangles, from the given set of candidates.
- *
- * @param callback(err,result) - asynchronously called with the result.
- *
- * @author Erel Segal-Halevi
- * @since 2014-01
- */
-jsts.algorithm.MaximumDisjointSetSolver.prototype.solve = function (callback) {
-	if (TRACE_PERFORMANCE) this.numRecursiveCalls = 0;
-	this.maximumDisjointSetRec(this.candidates, this.stopAtCount, callback);
-	if (TRACE_PERFORMANCE) console.log("numRecursiveCalls="+this.numRecursiveCalls);
-}
-
-
-/*--- Recursive functions ---*/
-
-jsts.algorithm.MaximumDisjointSetSolver.prototype.maximumDisjointSetRec = function(candidates, stopAtCount, callback) {
-	if (TRACE_PERFORMANCE) ++numRecursiveCalls;
-	if (candidates.length<=1)
-		return async.nextTick(callback.bind(null,null,candidates));
-	if (this.interrupted)
-		return async.nextTick(callback.bind(null,null,[]));
-
-	var partition = jsts.algorithm.partitionShapes(candidates);
-			//	partition[0] - on one side of separator;
-			//	partition[1] - intersected by separator;
-			//	partition[2] - on the other side of separator (- guaranteed to be disjoint from rectangles in partition[0]);
-	var t = new Date();
-	var allSubsetsOfIntersectedShapes = Combinatorics.power(partition[1]);
-
-	var self = this;
-	var currentMaxDisjointSet = [];
-	var subsetOfIntersectedShapes = null;
-	async.whilst(
-			function loopCondition() {
-				if (self.interrupted) return false;
-				if (currentMaxDisjointSet.length >= stopAtCount) return false;
-				subsetOfIntersectedShapes = allSubsetsOfIntersectedShapes.next();
-				if (!subsetOfIntersectedShapes) return false;
-				return true;
-			},
-			function loopBody(loopIterationFinished) {
-				if (!jsts.algorithm.arePairwiseDisjointByCache(subsetOfIntersectedShapes))
-					return async.nextTick(loopIterationFinished);
-
-				var candidatesOnSideOne = jsts.algorithm.calcDisjointByCache(partition[0], subsetOfIntersectedShapes);
-				var candidatesOnSideTwo = jsts.algorithm.calcDisjointByCache(partition[2], subsetOfIntersectedShapes);
-
-				// Make sure candidatesOnSideOne is larger than candidatesOnSideTwo - to enable heuristics
-				if (candidatesOnSideOne.length<candidatesOnSideTwo.length) {
-					var temp = candidatesOnSideOne;
-					candidatesOnSideOne = candidatesOnSideTwo;
-					candidatesOnSideTwo = temp;
-				}
-
-				// branch-and-bound (advice by D.W.):
-				var upperBoundOnNewDisjointSetSize = candidatesOnSideOne.length+candidatesOnSideTwo.length+subsetOfIntersectedShapes.length;
-				if (upperBoundOnNewDisjointSetSize<=currentMaxDisjointSet.length)
-					return async.nextTick(loopIterationFinished);
-
-				async.parallel(
-						[self.maximumDisjointSetRec.bind(self, candidatesOnSideOne, stopAtCount),
-						 self.maximumDisjointSetRec.bind(self, candidatesOnSideTwo, stopAtCount)],
-						function processResults(err, results) {
-							if (err) {
-								console.dir(err);
-								throw new Error(err);
-							}
-							var maxDisjointSetOnSideOne = results[0];
-							var maxDisjointSetOnSideTwo = results[1];
-							if (!maxDisjointSetOnSideOne || !maxDisjointSetOnSideTwo) {
-								console.dir(results);
-								throw new Error("undefined results");
-							}
-							var newDisjointSet = maxDisjointSetOnSideOne.concat(maxDisjointSetOnSideTwo).concat(subsetOfIntersectedShapes);
-							if (newDisjointSet.length>currentMaxDisjointSet.length)
-								currentMaxDisjointSet = newDisjointSet;
-							async.nextTick(loopIterationFinished);
-						}
-				)
-			}, // end function loopBody
-			function loopEnd(err) {
-				callback(err, currentMaxDisjointSet);
-			}
-	); // end of async.whilst
-} // end of function maximumDisjointSetRec
-
-}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./intersection-cache":23,"./partition-utils":25,"async":32,"js-combinatorics":34,"underscore":59}],15:[function(require,module,exports){
-(function (global){
-/**
- * Calculate a largest subset of interior-disjoint shapes from a given set of candidates.
- *
- * Synchronous version.
- *
- * @note For an asynchronous version that can be interrupted, see MaxDisjointSetAsync.js
- *
- * CREDITS:
- * * D.W.: http://cs.stackexchange.com/a/20140/1342
- *
- * @author Erel Segal-Halevi
- * @since 2014-02
- */
-
-var Combinatorics = require('js-combinatorics');
-var _ = require('underscore');
-
-var jsts = global.jsts
-require("./intersection-cache");
-require("./partition-utils");
-
-var TRACE_PERFORMANCE = false;
-var numRecursiveCalls;// a measure of performance
-
-
-/*--- Main Algorithm ---*/
-
-/**
- * Calculate a largest subset of non-intersecting shapes from a given set of candidates.
- * @param candidates a set of shapes (geometries).
- * @param stopAtCount - After finding this number of disjoint shapes, don't look further (default: infinity)
- * @return a subset of these shapes, that are guaranteed to be pairwise disjoint.
- */
-jsts.algorithm.maximumDisjointSet = function(candidates, stopAtCount) {
-	if (!stopAtCount) stopAtCount = Infinity;
-
-	if (TRACE_PERFORMANCE) var startTime = new Date();
-	// console.dir(candidates);
-	candidates = jsts.algorithm.prepareDisjointCache(jsts.algorithm.prepareShapesToPartition(candidates));  // in partition-utils.js
-	if (TRACE_PERFORMANCE) 	console.log("Preparation time = "+(new Date()-startTime)+" [ms]");
-	// console.dir(candidates);
-
-	if (TRACE_PERFORMANCE) numRecursiveCalls = 0;
-	var maxDisjointSet = maximumDisjointSetRec(candidates,stopAtCount);
-	if (TRACE_PERFORMANCE) console.log("numRecursiveCalls="+numRecursiveCalls);
-	return maxDisjointSet;
-}
-
-
-
-/*--- Recursive function ---*/
-
-/**
- * Find a largest interior-disjoint set of shapes, from the given set of candidates.
- *
- * @param candidates an array of candidate rectangles from which to select the MDS.
- * Each rectangle should contain the fields: minx, maxx, miny, maxy.
- *
- * @return a largest set of rectangles that do not interior-intersect.
- *
- * @note uses a simple exact divide-and-conquer algorithm that can be exponential in the worst case.
- * For more complicated algorithms that are provably more efficient (in theory) see: https://en.wikipedia.org/wiki/Maximum_disjoint_set
- *
- * @author Erel Segal-Halevi
- * @since 2014-01
- */
-function maximumDisjointSetRec(candidates,stopAtCount) {
-	if (TRACE_PERFORMANCE) ++numRecursiveCalls;
-	if (candidates.length<=1)
-		return candidates;
-
-	var currentMaxDisjointSet = [];
-	var partition = jsts.algorithm.partitionShapes(candidates);
-			//	partition[0] - on one side of separator;
-			//	partition[1] - intersected by separator;
-			//	partition[2] - on the other side of separator (- guaranteed to be disjoint from rectangles in partition[0]);
-
-	var allSubsetsOfIntersectedShapes = Combinatorics.power(partition[1]);
-	var subsetOfIntersectedShapes;
-	while (subsetOfIntersectedShapes = allSubsetsOfIntersectedShapes.next()) {
-//		console.log("subsetOfIntersectedShapes="+subsetOfIntersectedShapes)
-		if (!jsts.algorithm.arePairwiseDisjointByCache(subsetOfIntersectedShapes))
-			continue;
-
-		var candidatesOnSideOne = jsts.algorithm.calcDisjointByCache(partition[0], subsetOfIntersectedShapes);
-		var candidatesOnSideTwo = jsts.algorithm.calcDisjointByCache(partition[2], subsetOfIntersectedShapes);
-
-		// Make sure candidatesOnSideOne is larger than candidatesOnSideTwo - to enable heuristics
-		if (candidatesOnSideOne.length<candidatesOnSideTwo.length) {
-			var temp = candidatesOnSideOne;
-			candidatesOnSideOne = candidatesOnSideTwo;
-			candidatesOnSideTwo = temp;
-		}
-
-		// branch-and-bound (advice by D.W.):
-		var upperBoundOnNewDisjointSetSize = candidatesOnSideOne.length+candidatesOnSideTwo.length+subsetOfIntersectedShapes.length;
-		if (upperBoundOnNewDisjointSetSize<=currentMaxDisjointSet.length)
-			continue;
-
-		var maxDisjointSetOnSideOne = maximumDisjointSetRec(candidatesOnSideOne, stopAtCount);
-		var upperBoundOnNewDisjointSetSize = maxDisjointSetOnSideOne.length+candidatesOnSideTwo.length+subsetOfIntersectedShapes.length;
-		if (upperBoundOnNewDisjointSetSize<=currentMaxDisjointSet.length)
-			continue;
-
-		var maxDisjointSetOnSideTwo = maximumDisjointSetRec(candidatesOnSideTwo, stopAtCount-maxDisjointSetOnSideOne.length);
-
-		var newDisjointSet = maxDisjointSetOnSideOne.concat(maxDisjointSetOnSideTwo).concat(subsetOfIntersectedShapes);
-		if (newDisjointSet.length > currentMaxDisjointSet.length)
-			currentMaxDisjointSet = newDisjointSet;
-		if (currentMaxDisjointSet.length >= stopAtCount)
-			break;
-	}; // end of while loop
-	return currentMaxDisjointSet;
-}
-
-}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./intersection-cache":23,"./partition-utils":25,"js-combinatorics":34,"underscore":59}],16:[function(require,module,exports){
-(function (global){
-/**
- * Calculate the minimum square covering of a SimpleRectilinearPolygon.
- * Based on Bar-Yehuda, R. and Ben-Hanoch, E. (1996). A linear-time algorithm for covering simple polygons with similar rectangles. International Journal of Computational Geometry & Applications, 6.01:79-102.
- * 	http://www.citeulike.org/user/erelsegal-halevi/article/12475038
- * 
- * 
- * USAGE EXAMPLE:
- * 
- * var jsts = require("computational-geometry");
- * ...
- * var polygonXY = [0,0, 15,5, 20,20];
- * console.dir(jsts.minSquareCovering(polygonXY));
- * 
- * 
- * @author Erel Segal-Halevi
- * @since 2014-09
- */
-
-
-
-var jsts = global.jsts
-require("./SimpleRectilinearPolygon");
-require("./Side");
-
-var LinkedList = require('jsclass/src/linked_list').LinkedList;
-var ListNode = LinkedList.Node;
-var DoublyLinkedList = LinkedList.Doubly.Circular;
-require('./DoublyLinkedList');
-
-var almostEqual = require("almost-equal")
-
-function TRACE(s) {
-//	console.log(s);
-};
-
-
-var error = function(msg) {throw new Error(msg);}
-
-Math.compare = function(a,b) { return (a<b)-(a>b); }
-
-
-/*-************ SEGMENT *******************-*/
-
-/**
- * Construct a segment between two corners of a rectilinear polygon
- */
-var Segment = function(c0, c1) {
-	this.c0 = c0;
-	this.c1 = c1;
-	this.direction = (
-		c0.y<c1.y? jsts.Side.North:
-		c0.y>c1.y? jsts.Side.South:
-		c0.x<c1.x? jsts.Side.East:
-		c0.x>c1.x? jsts.Side.West:
-		error("cannot detect the direction: "+c0.toString()+", "+c1.toString())
-	);
-	
-	this.coveringSquares = new DoublyLinkedList();	 // All squares s selected for the cover and having the following properties:
-		// a. s intersects the segment. (Note: every intersection of a square with the segment is on an original concave point???)
-		// b. The two edges of s which are orthogonal to the segment are exposed.
-		// c. There is a point in the polygon which is covered only by s (and not by any other square selected so far).
-		// The squares for each segment are kept sorted by their appearance order.
-}
-
-Segment.prototype.initializeProjectionList = function() {
-	this.projectionList = new DoublyLinkedList();	 // All vertices visible to this segment; filled during initialization of polygon
-}
-
-// this is a function because the corners change!
-Segment.prototype.length = function() {
-	return Math.abs(this.c0.x-this.c1.x)+Math.abs(this.c0.y-this.c1.y);
-}
-
-Segment.prototype.addVisibleCorner = function(corner)	 {	
-	var node = new ListNode(corner);   // we need a node because the same corner participates in two different projection lists - positive and negative
-	this.projectionList.push(node);
-	return node;
-}
-
-Segment.prototype.isVertical = function()	 {	return jsts.isVertical(this.direction);	}
-Segment.prototype.isHorizontal = function() {	return jsts.isHorizontal(this.direction);	}
-
-Segment.prototype.isKnob = function() {
-	return this.c0.isConvex && this.c1.isConvex;
-}
-
-Segment.prototype.xSign = function() {	return Math.compare(this.c0.x,this.c1.x);	}
-Segment.prototype.ySign = function() {	return Math.compare(this.c0.y,this.c1.y);	}
-
-Segment.prototype.setX = function(x) {
-	if (!this.isVertical()) throw new Error("Set X is valid only for a vertical knob");
-	this.c0.x = this.c1.x = x;
-}
-
-Segment.prototype.setY = function(y) {
-	if (!this.isHorizontal()) throw new Error("Set Y is valid only for a horizontal knob");
-	this.c0.y = this.c1.y = y;
-}
-
-Segment.prototype.getX = function() { return  this.isVertical()? this.c0.x: "["+this.c0.x+","+this.c1.x+"]"; }
-Segment.prototype.getY = function() { return  this.isHorizontal()? this.c0.y: "["+this.c0.y+","+this.c1.y+"]"; }
-
-Segment.prototype.yContains = function(point) {
-	return 	(this.c0.y >= point.y && point.y >= this.c1.y) ||
-			(this.c0.y <= point.y && point.y <= this.c1.y);
-}
-
-Segment.prototype.xContains = function(point) {
-	return 	(this.c0.x >= point.x && point.x >= this.c1.x) ||
-			(this.c0.x <= point.x && point.x <= this.c1.x);
-}
-
-Segment.prototype.contains = function(point) {
-	if (this.isVertical()) 
-		return this.c0.x == point.x && this.yContains(point);
-	else 
-		return this.c0.y == point.y && this.xContains(point);
-}
-
-Segment.prototype.isVerticalEastOf = function(point) {
-	return (this.c0.x==this.c1.x) && (this.c0.x > point.x) && this.yContains(point);	}
-Segment.prototype.isVerticalWestOf = function(point) {
-	return (this.c0.x==this.c1.x) && (this.c0.x < point.x) && this.yContains(point);	}
-Segment.prototype.isHorizontalNorthOf = function(point) {
-	return (this.c0.y==this.c1.y) && (this.c0.y > point.y) && this.xContains(point);	}
-Segment.prototype.isHorizontalSouthOf = function(point) {
-	return (this.c0.y==this.c1.y) && (this.c0.y < point.y) && this.xContains(point);	}
-
-Segment.prototype.isInDirectionOf = function(direction,point) {
-	switch (direction) {
-	case jsts.Side.East: return this.isVerticalEastOf(point);
-	case jsts.Side.West: return this.isVerticalWestOf(point);
-	case jsts.Side.South: return this.isHorizontalSouthOf(point);
-	case jsts.Side.North: return this.isHorizontalNorthOf(point);
-	}
-}
-
-Segment.prototype.isInDirectionOfSegment = function(direction,segment) {
-	switch (direction) {
-	case jsts.Side.East: return this.c0.x>segment.c0.x;  // vertical
-	case jsts.Side.West: return this.c0.x<segment.c0.x;  // vertical
-	case jsts.Side.North: return this.c0.y>segment.c0.y;  // horizontal
-	case jsts.Side.South: return this.c0.y<segment.c0.y;  // horizontal
-	}
-}
-
-Segment.prototype.distanceToCorner = function(corner) {
-	return (this.isVertical()? 	
-			Math.abs(corner.x-this.c0.x):
-			Math.abs(corner.y-this.c0.y));
-}
-
-Segment.prototype.distanceToNearestConcaveCorner = function() {
-	var nearestSoFar = Infinity;
-	this.projectionList.forEach(function(node) {
-		var corner = node.data;
-		var distance = this.distanceToCorner(corner);
-		if (distance<nearestSoFar)
-			nearestSoFar = distance;
-	}, this);
-	return nearestSoFar;
-}
-
-/**
- * @return the distance to the nearest side of the polygon.
- * relevant mainly for knobs
- */
-Segment.prototype.distanceToNearestBorder = function() {
-	return Math.min(
-		this.distanceToNearestConcaveCorner(),
-		Math.min(
-			this.c0.distanceToNearestSegment(jsts.inverseSide(this.prev.direction)),
-			this.c1.distanceToNearestSegment(this.next.direction)
-		)
-	);
-}
-
-Segment.prototype.signOfPolygonInterior = function() {
-	if (this.isVertical()) 
-		return this.c0.signOfPolygonInteriorX();
-	else
-		return this.c0.signOfPolygonInteriorY();
-}
-
-/**
- * @return the square adjacent to this segment which is contained in the polygon.
- */
-Segment.prototype.getAdjacentSquareInPolygon = function() {
-	var x0, x1, y0, y1;
-	if (this.isVertical()) {
-		x0 = this.c0.x;
-		x1 = x0 + this.signOfPolygonInterior() * this.length();
-		y0 = this.c0.y;
-		y1 = this.c1.y;
-	} else {
-		x0 = this.c0.x;
-		x1 = this.c1.x;
-		y0 = this.c0.y;
-		y1 = y0 + this.signOfPolygonInterior() * this.length();
-	}
-	return {
-		minx: Math.min(x0,x1),
-		maxx: Math.max(x0,x1),
-		miny: Math.min(y0,y1),
-		maxy: Math.max(y0,y1),
-	}
-}
-
-Segment.prototype.isAxisParallel = function() {
-	return (this.c0.x==this.c1.x || this.c0.y==this.c1.y);
-}
-
-Segment.prototype.toString = function() {
-	if (this.prev==null) 
-		console.warn("this.prev is null!");
-	if (this.next==null) 
-		console.warn("this.next is null!");
-	return "["+
-		this.c0+" - "+this.c1+
-		" , len="+this.length()+
-		" , dir="+this.direction+
-		(this.prev && this.next? ", tocorner="+this.distanceToNearestConcaveCorner()+", toborder="+this.distanceToNearestBorder(): "")+
-		(this.knobCount? ", knobCount="+this.knobCount: "") +
-		"]";
-}
-
-
-
-
-
-/*-************ CORNER *******************-*/
-
-/**
- * Construct a corner structure for a given vertex
- */
-var Corner = function(point) {
-	this.x = point.x;
-	this.y = point.y;
-}
-
-/**
- * Set the two segments that meet at the corner, and calculate the turn direction
- */
-Corner.prototype.setSegments = function(s0,s1) {
-	this.s0 = s0;  // incoming segment
-	this.s1 = s1;  // outgoing segment
-}
-
-Corner.prototype.calculateConvexity = function(polygonTurnDirection) {
-	this.isConvex = (this.turnDirection() == polygonTurnDirection);
-}
-
-Corner.prototype.turnDirection = function() {
-	return jsts.turn(this.s0.direction, this.s1.direction); // left=-1, right=1
-}
-
-/**
- * @return the direction of the polygon interior relative to this (convex) corner. 
- * The direction is returned as a string: SW, SE, NW or NE.
- */
-Corner.prototype.directionOfPolygonInterior = function() {
-	var northSouth, eastWest;
-	
-	var dir0 = jsts.sideToLetter[jsts.inverseSide(this.s0.direction)];
-	var dir1 = jsts.sideToLetter[this.s1.direction];
-	
-	if (this.s0.isVertical())
-		return dir0+dir1;
-	else
-		return dir1+dir0;
-}
-
-Corner.prototype.verticalDirection = function() {
-	return this.s0.isVertical()? jsts.inverseSide(this.s0.direction): this.s1.direction;
-}
-
-Corner.prototype.horizontalDirection = function() {
-	return this.s0.isHorizontal()? jsts.inverseSide(this.s0.direction): this.s1.direction;
-}
-
-Corner.prototype.signOfPolygonInteriorX = function() {
-	return ((this.horizontalDirection()==jsts.Side.East)==this.isConvex)? 1: -1
-}
-
-Corner.prototype.signOfPolygonInteriorY = function() {
-	return ((this.verticalDirection()==jsts.Side.North)==this.isConvex)? 1: -1
-}
-
-Corner.prototype.distanceToSegment = function(segment) {
-	return segment.distanceToCorner(this);
-}
-
-/**
- * Set the two segments that see this (concave) corner, and remember our location in their projection lists.
- */
-Corner.prototype.setVisibilityInfo = function(positiveVisibilitySegment,negativeVisibilitySegment) {
-	if (this.isConvex)
-		throw new Error("setVisibilityInfo should be called only for concave corners")
-	
-	this.positiveVisibilitySegment = positiveVisibilitySegment; // The segment visible to us in the direction of the incoming segment (s0). It contains the point p+.
-	this.positiveVisibilityNode = positiveVisibilitySegment.addVisibleCorner(this);  // pointer to the node, in the list of positiveVisibilitySegment, which contains us.
-	
-	this.negativeVisibilitySegment = negativeVisibilitySegment; // The segment visible to us in the opposite direction to the outgoing segment (s1).  It contains the point p-.
-	this.negativeVisibilityNode = negativeVisibilitySegment.addVisibleCorner(this);  // pointer to the node, in the list of negativeVisibilitySegment, which contains us.
-}
-
-
-// remove this corner from ALL lists it participates in:
-Corner.prototype.remove = function() {
-	this.list.remove(this);
-	if (this.positiveVisibilityNode)
-		this.positiveVisibilityNode.list.remove(this.positiveVisibilityNode);
-	if (this.negativeVisibilityNode)
-		this.negativeVisibilityNode.list.remove(this.negativeVisibilityNode);
-}
-
-Corner.prototype.distanceToNearestSegment = function(direction) {
-	if (this.isConvex) {
-		if (direction==jsts.inverseSide(this.s0.direction)) {
-			var knobLength = this.s0.length();
-			var nextCorner = this.s0.c0;
-		} else if (direction==this.s1.direction) {
-			var knobLength = this.s1.length();
-			var nextCorner = this.s1.c1;
-		} else {
-			return 0;
-		}
-		return knobLength + 
-			(nextCorner.isConvex? 0: nextCorner.distanceToNearestSegment(direction));
-	} else {  // concave corner - use the visibility information:
-		if (direction==this.s0.direction) {
-			if (!this.positiveVisibilitySegment) throw new Error("missing positive visibility information");
-			return this.distanceToSegment(this.positiveVisibilitySegment);
-		}
-		if (direction==jsts.inverseSide(this.s1.direction)) {
-			if (!this.negativeVisibilitySegment) throw new Error("missing negative visibility information");
-			return this.distanceToSegment(this.negativeVisibilitySegment);
-		}
-		return 0;
-	}
-}
-
-Corner.prototype.toString = function() {
-	return "("+this.x+","+this.y+"; "+this.turnDirection()+","+(this.isConvex?"convex":"concave")+")";
-}
-
-
-
-/*-************ MinSquareCoveringData Structure *******************-*/
-
-/**
- * thePolygon - a SimpleRectilinearPolygon
- */
-var MinSquareCoveringData = jsts.algorithm.MinSquareCoveringData = function(thePolygon) {
-	/* Clone the sequence of corners in order to add more information: */
-	var points = thePolygon.getCoordinates();
-	//console.log("typeof points="+typeof points)
-	//console.log("points.length="+points.length)
-	var corners = new DoublyLinkedList();
-	for (var i=0; i<points.length-1; ++i) 
-		corners.push(new Corner(points[i]));  //points[i] should have a field "x" and a field "y".
-	this.corners = corners;
-
-	/* Calculate the sequence of segments and the turn directions of the corners: */
-	var segments = new DoublyLinkedList();
-	var previousSegment = null;
-	var totalTurn = 0;
-	corners.forEach(function(corner) {
-		var segment = new Segment(corner, corner.next);
-		segments.push(segment);
-		if (previousSegment) {
-			corner.setSegments(previousSegment,segment);
-			totalTurn += corner.turnDirection();
-		}
-		previousSegment = segment;
-	}, this);
-	this.segments = segments;
-	corners.first.setSegments(segments.last, segments.first);
-	totalTurn += corners.first.turnDirection();
-	this.turnDirection = jsts.turnDirection(totalTurn);
-	this.calculateConvexityAndVisibility();
-	
-	this.factory = thePolygon.factory;
-}
-
-
-MinSquareCoveringData.prototype.isEmpty = function() {
-	return this.corners.isEmpty();
-}
-
-MinSquareCoveringData.prototype.calculateConvexityAndVisibility = function() {
-	/* Decide whether the corners are convex or concave, and calculate visibility information: */
-	
-	TRACE("calculateConvexityAndVisibility: "+this.corners.length+" corners")
-	this.segments.forEach(function(segment) {
-		segment.initializeProjectionList();
-	});
-	this.corners.forEach(function(corner) {
-		corner.calculateConvexity(this.turnDirection);
-		if (!corner.isConvex) {   // concave corner - calculate visibility information:
-			var positiveVisibilitySegment = this.findClosestSegment(corner.s0.direction, corner);
-			if (!positiveVisibilitySegment) throw new Error("findClosestSegment returned null for positive visibility of "+corner.toString());
-			var negativeVisibilitySegment = this.findClosestSegment(jsts.inverseSide(corner.s1.direction), corner);
-			if (!negativeVisibilitySegment) throw new Error("findClosestSegment returned null for negative visibility of "+corner.toString());
-			corner.setVisibilityInfo(positiveVisibilitySegment,negativeVisibilitySegment);
-		}
-	}, this);
-	this.checkValid();
-}
-
-MinSquareCoveringData.prototype.findClosestSegment = function(direction, point) {
-//	console.log("fcs "+point.toString())
-	var closestSoFar = null;
-	this.segments.forEach(function(segment) {
-//		console.log("\tfcs "+point.toString()+" "+segment.isInDirectionOf(direction,point))
-		if (segment && segment.isInDirectionOf(direction,point)) {
-			if (!closestSoFar || closestSoFar.isInDirectionOfSegment(direction,segment))
-				closestSoFar = segment;
-		}
-	});
-//	console.log("\tfcs "+point.toString()+" end");
-//	if (!closestSoFar)	throw new Error("findClosestSegment returned null")
-	return closestSoFar;
-}
-
-/**
- * @param point {x,y}
- * @return true if the point is in the interior of the polygon.
- * Uses the "even-odd rule" algorithm: https://en.wikipedia.org/wiki/Point_in_polygon
- */
-MinSquareCoveringData.prototype.contains = function(point) {
-	var intersections = 0;
-	var onBoundary = false;
-	this.segments.forEach(function(segment) {
-		//console.dir(segment.c0+" - "+segment.c1);
-		if (segment.contains(point))
-			onBoundary = true; // point is on the boundary.
-		else if (segment.isVerticalEastOf(point))
-			intersections++;
-	});
-	if (onBoundary) return false;
-	else return (intersections%2==1); // odd = internal; even = external
-}
-
-
-
-
-
-Segment.prototype.hasContinuator = function() {
-	if (!this.isKnob())
-		return false;
-	if (this.distanceToNearestBorder() < this.length())
-		return false;
-//	if (this.distanceToNearestBorder() < this.length())
-//		return false;
-	return true;
-}
-
-/**
- * Decide if a given knob-chain supports a continuator.
- * @param knobCount (int) number of knobs in chain: 1, 2, 3 or 4.
- * @param knobStartingChain, knobEndingChain (Segment)
- * 
- */
-function hasContinuator(knobCount, knobStartingChain, knobEndingChain) {
-	var knobLength = knobStartingChain.length();
-	var beforeChain = knobStartingChain.prev;
-	var afterChain = knobEndingChain.next;
-	switch (knobCount) {
-	case 4: 
-		return true;
-	case 3: 
-		var Aprev = beforeChain.c0;
-		var Dnext = afterChain.c1;
-		//console.log("Aprev:"+Aprev+" Dnext:"+Dnext);
-		var Aprev_sees_Dnext = (!Aprev.isConvex && !Dnext.isConvex && Dnext.positiveVisibilitySegment.c1==Aprev);
-		return Aprev_sees_Dnext;
-	case 2:
-		var A = knobStartingChain.c0;
-		var Aprev = beforeChain.c0;
-		var C = knobEndingChain.c1;
-		var Cnext = afterChain.c1;
-		
-		var AAprev = knobStartingChain.prev.length();
-		var A_Aprev = Aprev.isConvex? AAprev: A.distanceToSegment(Aprev.negativeVisibilitySegment);
-		var CCnext = knobEndingChain.next.length();
-		var C_Cnext = Cnext.isConvex? CCnext: C.distanceToSegment(Cnext.positiveVisibilitySegment);
-
-		//console.log("Aprev:"+Aprev+" Cnext:"+Cnext+" AAprev:"+AAprev+" A_Aprev:"+A_Aprev+" CCnext:"+CCnext+" C_Cnext:"+C_Cnext);
-
-		return (A_Aprev>knobLength && C_Cnext>knobLength) ||
-		                (AAprev>=knobLength && C_Cnext==knobLength) ||
-		                (A_Aprev==knobLength && CCnext>=knobLength);
-	case 1:
-		return (knobStartingChain.distanceToNearestBorder() > knobLength+almostEqual.FLT_EPSILON);
-	default: 
-		throw new Error("Invalid knobCount: "+knobCount);
-	}
-}
-
-/**
- * @return the first segment, unless it is a knob in the middle of a knob-chain, in which case it returns the first knob in that chain.
- */
-MinSquareCoveringData.prototype.firstInChain = function() {
-	var segment = this.segments.first;
-	
-	if (segment.isKnob()) {
-		var knobLength = segment.length();
-		// Make sure "segment" is the first in a knob chain:
-		while (almostEqual(segment.prev.length(),knobLength,0,0.001) && 
-				segment.prev.isKnob() && 
-				segment.prev!=this.segments.first)  {
-			segment = segment.prev;
-		}
-	}
-	
-	return segment;
-}
-
-
-/**
- * @return the first knob in a chain supporting a continuator.
- */
-MinSquareCoveringData.prototype.findSegmentWithContinuator = function() {
-	TRACE("\nfindSegmentWithContinuator: "+this.segments.length+" segments")
-
-	var firstSegment = this.firstInChain();
-	var segment = firstSegment;
-	for (;;) {
-		if (segment.isKnob()) {
-			var knobStartingChain = segment;
-			var knobLength = knobStartingChain.length();
-			
-			// Calculate the length of the knob-chain:
-			var knobCount = 1;
-			var knobEndingChain = segment;
-			while (almostEqual(knobEndingChain.next.length(),knobLength,0,0.001) && 
-					knobEndingChain.next.isKnob() && 
-					knobEndingChain.next!=firstSegment)  {
-				knobEndingChain = knobEndingChain.next;
-				knobCount++;
-			}
-			knobStartingChain.knobCount = knobCount;
-			
-			// Check if there is a continuator starting at knobStartingChain:
-			if (hasContinuator(knobCount, knobStartingChain, knobEndingChain))
-				return knobStartingChain;
-
-			segment = knobEndingChain.next; // ...and continue searching
-		} else {
-			segment = segment.next;  // ...and continue searching
-		}
-		
-		if (segment==firstSegment) {
-			console.log(this.segments.toString());
-			throw new Error("No continuator found - this is against the Theorem!");
-		}
-	}
-}
-
-/**
- * @return a list of all first-knobs with continuators.
- */
-MinSquareCoveringData.prototype.findAllSegmentsWithContinuators = function() {
-	TRACE("\findAllSegmentsWithContinuators: "+this.segments.length+" segments")
-	
-	var theSegments = [];
-
-	var firstSegment = this.firstInChain();
-	var segment = firstSegment;
-	for (;;) {
-		if (segment.isKnob()) {
-			var knobStartingChain = segment;
-			var knobLength = knobStartingChain.length();
-
-			// Calculate the length of the knob-chain:
-			var knobCount = 1;
-			var knobEndingChain = segment;
-			while (almostEqual(knobEndingChain.next.length(),knobLength,0,0.001) && 
-					knobEndingChain.next.isKnob() && 
-					knobEndingChain.next!=firstSegment)  {
-				knobEndingChain = knobEndingChain.next;
-				knobCount++;
-			}
-			knobStartingChain.knobCount = knobCount;
-
-			// Check if there is a continuator starting at knobStartingChain:
-			if (hasContinuator(knobCount, knobStartingChain, knobEndingChain))
-				theSegments.push(knobStartingChain);
-			
-			segment = knobEndingChain.next; // ...and continue searching
-		} else {
-			segment = segment.next;  // ...and continue searching
-		}
-
-		if (segment==firstSegment) 
-			break;
-	}
-
-	if (!theSegments.length) {
-		console.log(this.segments.toString());
-		throw new Error("No continuator found - this is against the Theorem!");
-	}
-	
-	return theSegments;
-}
-
-/**
- *  remove the given segments and their c0/c1 corners.
- *  Segments must be in increasing order.
- */
-MinSquareCoveringData.prototype.removeSegments = function(segments, removeCornersBeforeSegments) {
-	var prev = segments[0].prev;
-	var next = segments[segments.length-1].next;
-	for (var i=0; i<segments.length; ++i) {
-		var segmentToRemove = segments[i];
-		this.segments.remove(segmentToRemove);
-		var cornerToRemove = removeCornersBeforeSegments? segmentToRemove.c0: segmentToRemove.c1;
-		cornerToRemove.remove();
-	}
-	if (removeCornersBeforeSegments)  // prev.c1 is before segments[0] and hence removed:
-		prev.c1 = next.c0;
-	else                              // next.c0 is after segments.last and hence removed:
-		next.c0 = prev.c1;
-	prev.c1.s1 = next;
-	next.c0.s0 = prev;
-}
-
-
-/**
- * @param knob a segment in this.segments.
- * @param knobCount a number between 1 and 4 describing the number of adjacent knobs (starting from knob)
- */
-MinSquareCoveringData.prototype.removeErasableRegion = function(knob) {
-	if (!knob.isKnob()) {
-		console.dir(knob);
-		throw new Error("non-knob disguised as a knob!")
-	}
-	
-	var knobCount = knob.knobCount;
-
-	if (knobCount<1 || 4<knobCount) {
-		console.dir(knob);
-		throw new Error("illegal knobCount "+knobCount);
-	}
-
-	if (knobCount==4) {
-		this.removeAll();
-		TRACE("\t4 knobs: removing all: "+this.isEmpty());
-		return;
-	}
-	
-	else if (knobCount==3) {  // a room with a door; remove the "balcony" of the room.
-		var knob1=knob, knob2=knob.next, knob3=knob.next.next;
-//			console.log("*** 3 knobs - remove balcony ***");
-//			console.log("knob1="+knob1.toString()+"\nknob2="+knob2.toString()+"\nknob3="+knob3.toString());
-		if (knob1.isVertical()) {
-			var doorWidth = Math.abs(knob1.prev.c0.x - knob3.next.c1.x);
-			knob1.setX(knob1.prev.c0.x);
-			knob1.c1.y = knob1.c0.y + knob1.ySign()*doorWidth;
-			knob1.c0.y = knob1.prev.prev.c0.y;
-			knob3.setX(knob3.next.c1.x);
-			knob3.c0.y = knob3.c1.y - knob3.ySign()*doorWidth;
-			knob3.c1.y = knob3.next.next.c1.y;
-		} else {
-			var doorWidth = Math.abs(knob1.prev.c0.y - knob3.next.c1.y);
-			knob1.setY(knob1.prev.c0.y);
-			knob1.c1.x = knob1.c0.x + knob1.xSign()*doorWidth;
-			knob1.c0.x = knob1.prev.prev.c0.x;
-			knob3.setY(knob3.next.c1.y);
-			knob3.c0.x = knob3.c1.x - knob3.xSign()*doorWidth;
-			knob3.c1.x = knob3.next.next.c1.x;
-		}
-		this.removeSegments([knob1.prev.prev,knob1.prev], /*removeCornersBeforeSegments=*/true);
-		this.removeSegments([knob3.next,knob3.next.next], /*removeCornersBeforeSegments=*/false);
-		
-		knob = knob2;  // this is a 1-knob continuator
-		this.calculateConvexityAndVisibility();
-		this.checkValid();
-	}
-	
-	else if (knobCount==2) {     // a room with a wide opening; remove the "balcony" of the room.
-		var knob1=knob, knob2=knob.next;
-		var knobLength = knob.length(), prevLength = knob1.prev.length(), nextLength = knob2.next.length();
-		TRACE("\t2 knobs: remove balcony");
-		TRACE("\t\tprevLength="+prevLength+"\n\t\tknob1="+knob1.toString()+"\n\t\tknob2="+knob2.toString()+"\n\t\tknobLength="+knobLength+"\n\t\tnextLength="+nextLength);
-		if ((almostEqual(prevLength,nextLength,0,0.001) && nextLength<=knobLength)) {      // type #1
-			var doorWidth = knobLength-prevLength;
-			if (knob1.isVertical()) {
-				knob1.setX(knob1.prev.c0.x);  // also sets knob2.c0.x
-				knob2.setY(knob2.next.c1.y);  // also sets knob1.c1.y
-				knob1.c0.y = knob1.prev.prev.c0.y;
-				knob2.c1.x = knob2.next.next.c1.x;
-			} else {
-				knob1.setY(knob1.prev.c0.y);  // also sets knob2.c0.y
-				knob2.setX(knob2.next.c1.x);  // also sets knob1.c1.x
-				knob1.c0.x = knob1.prev.prev.c0.x;
-				knob2.c1.y = knob2.next.next.c1.y;
-			}
-			this.removeSegments([knob1.prev.prev,knob1.prev], /*removeCornersBeforeSegments=*/true);
-			this.removeSegments([knob2.next,knob2.next.next], /*removeCornersBeforeSegments=*/false);
-			knob = null;  // no 1-knob continuator (???)
-		} else if ((prevLength<nextLength && nextLength<=knobLength) ||    // type #2
- 		    (prevLength<=knobLength && knobLength<=nextLength)) {      // type #1
-			var doorWidth = knobLength-prevLength;
-			if (knob1.isVertical()) {
-				knob1.setX(knob1.prev.c0.x);
-				knob1.c1.y = knob1.c0.y + knob1.ySign()*doorWidth;
-				knob1.c0.y = knob1.prev.prev.c0.y;
-				knob2.c1.y = knob2.c0.y; // = knob1.c1.y
-			} else {
-				knob1.setY(knob1.prev.c0.y);
-				knob1.c1.x = knob1.c0.x + knob1.xSign()*doorWidth;
-				knob1.c0.x = knob1.prev.prev.c0.x;
-				knob2.c1.x = knob2.c0.x; // = knob1.c1.x
-			}		
-			this.removeSegments([knob1.prev.prev,knob1.prev], /*removeCornersBeforeSegments=*/true);
-			knob = knob2;  // this is a 1-knob continuator
-		} else if (	(nextLength<prevLength && prevLength<=knobLength) ||  // type #2
-			        (nextLength<=knobLength && knobLength<=prevLength))  {  // type #1
-			var doorWidth = knobLength-nextLength;
-			if (knob2.isVertical()) {
-				knob2.setX(knob2.next.c1.x);
-				knob2.c0.y = knob2.c1.y - knob2.ySign()*doorWidth;
-				knob2.c1.y = knob2.next.next.c1.y;
-				knob1.c0.y = knob1.c1.y; // = knob2.c0.y
-			} else {
-				knob2.setY(knob2.next.c1.y);
-				knob2.c0.x = knob2.c1.x - knob2.xSign()*doorWidth;
-				knob2.c1.x = knob2.next.next.c1.x;
-				knob1.c0.x = knob1.c1.x; // = knob2.c0.x
-			}
-			this.removeSegments([knob2.next,knob2.next.next], /*removeCornersBeforeSegments=*/true);
-			knob = knob1;  // this is a 1-knob continuator
-		} 
-		TRACE("\t2 knobs: removeD balcony");
-		TRACE("\t\tknob1="+knob1.toString()+"\n\t\tknob2="+knob2.toString());
-
-		this.calculateConvexityAndVisibility();
-		this.checkValid();
-	}
-
-	if (!knob)  return;
-	
-	// handle remaining 1-knob continuator:
-	var exposedDistance0 = knob.prev.length();
-	if (knobCount==1 && exposedDistance0<almostEqual.FLT_EPSILON || exposedDistance0<0) {console.log("knob="+knob.toString());  throw new Error("exposedDistance at knob.prev = "+exposedDistance0)}
-	var exposedDistance1 = knob.next.length();
-	if (knobCount==1 && exposedDistance1<almostEqual.FLT_EPSILON || exposedDistance1<0) {console.log("knob="+knob.toString()); throw new Error("exposedDistance at knob.next = "+exposedDistance1)}
-	var exposedDistance = Math.min(exposedDistance0,exposedDistance1);
-	var coveredDistance = knob.length(); // TODO: calculate the actual covering distance
-	if (knobCount==1 && coveredDistance<almostEqual.FLT_EPSILON || coveredDistance<0) {console.log("knob="+knob.toString()); throw new Error("coveredDistance = "+coveredDistance)}
-	var securityDistance = knob.distanceToNearestBorder() - knob.length();
-	if (knobCount==1 && securityDistance<almostEqual.FLT_EPSILON || securityDistance<0) {console.log("knob="+knob.toString()); throw new Error("securityDistance = "+securityDistance)}
-	var nonExposedDistance = Math.min(coveredDistance,securityDistance);
-	TRACE("nonExposedDistance=min("+coveredDistance+","+securityDistance+")="+nonExposedDistance+" exposedDistance=min("+exposedDistance0+","+exposedDistance1+")="+exposedDistance);
-	
-	if (nonExposedDistance>0 && nonExposedDistance < exposedDistance) { // The knob just moves into the polygon:
-		if (knob.isVertical())
-			knob.c0.x = knob.c1.x = knob.c1.x + knob.signOfPolygonInterior()*nonExposedDistance;
-		else 
-			knob.c0.y = knob.c1.y = knob.c1.y + knob.signOfPolygonInterior()*nonExposedDistance;
-	} else if (exposedDistance>0 && exposedDistance <= nonExposedDistance){  // some corners should be removed:
-		if (exposedDistance0<exposedDistance1) {
-			// shorten the next segment:
-			if (knob.isVertical()) 
-				knob.next.c0.x=knob.prev.c0.x;
-			else 
-				knob.next.c0.y=knob.prev.c0.y;
-			this.removeSegments([knob.prev,knob], /*removeCornersBeforeSegments=*/true);
-		} else if (exposedDistance1<exposedDistance0) {
-			// shorten the previous segment:
-			if (knob.isVertical()) 
-				knob.prev.c1.x=knob.next.c1.x;
-			 else 
-				knob.prev.c1.y=knob.next.c1.y;
-			this.removeSegments([knob, knob.next], /*removeCornersBeforeSegments=*/false);
-		} else {
-			if (knob.isVertical()) 
-				knob.prev.prev.c1.y=knob.next.next.c1.y;
-			else 
-				knob.prev.prev.c1.x=knob.next.next.c1.x;
-			this.removeSegments([knob.prev, knob, knob.next, knob.next.next], /*removeCornersBeforeSegments=*/true);
-		}
-	}
-	this.checkValid();
-}
-
-MinSquareCoveringData.prototype.removeAll = function() {
-	this.segments.initialize();
-	this.corners.initialize();
-}
-
-MinSquareCoveringData.prototype.checkValid = function() {
-	this.segments.forEach(function(segment){
-		if (!segment.isAxisParallel())
-			throw new Error("Invalid polygon: "+this.corners.toString()+"\n\tOne of the segments is not axis parallel: "+segment.toString());
-		if (segment.isKnob() && segment.distanceToNearestBorder()==0)
-			throw new Error("Invalid polygon: "+this.corners.toString()+"\n\tOne of the segments is adjacent to the border: "+segment.toString());
-		if (segment.prev===null)
-			throw new Error("Invalid polygon: "+this.corners.toString()+"\n\tsegment.prev is null: "+segment.toString());
-		if (segment.next===null)
-			throw new Error("Invalid polygon: "+this.corners.toString()+"\n\tsegment.next is null: "+segment.toString());
-	},this)
-
-	this.corners.forEach(function(corner){
-		if (!corner.s0.isAxisParallel()) 
-			throw new Error("Invalid polygon: "+this.corners.toString()+"\n\tSegment before corner "+corner.toString()+" is not axis parallel: "+corner.s0);
-		if (!corner.s1.isAxisParallel()) 
-			throw new Error("Invalid polygon: "+this.corners.toString()+"\n\tSegment after corner "+corner.toString()+" is not axis parallel: "+corner.s1);
-		if (corner.s0.prev===null)
-			throw new Error("Invalid polygon: "+this.corners.toString()+"\n\tSegment before corner "+corner.toString()+" has null prev: "+corner.s0);
-		if (corner.s1.prev===null)
-			throw new Error("Invalid polygon: "+this.corners.toString()+"\n\tSegment after corner "+corner.toString()+" has null prev: "+corner.s1);
-	},this)
-}
-
-
-
-var cornerToKey = function(corner) {
-	return corner.x+","+corner.y;
-}
-
-MinSquareCoveringData.prototype.hasConvexCorner = function(corner) {
-	if (!this.hashOfConvexCorners) {
-		this.hashOfConvexCorners = {};
-		this.corners.forEach(function(point) {
-			if (point.isConvex) 
-				this.hashOfConvexCorners[cornerToKey(point)]=true;
-		},this)
-	}
-	return this.hashOfConvexCorners[cornerToKey(corner)];
-}
-
-MinSquareCoveringData.prototype.getResidualPolygon = function() {
-	var residualPolygonPoints = this.corners.map(function(corner) {
-		return {x:corner.x, y:corner.y}
-	});
-	residualPolygonPoints.push(residualPolygonPoints[0]);
-	return this.factory.createSimpleRectilinearPolygon(residualPolygonPoints);
-}
-
-/**
- * Iterates the squares covering this polygon.
- * 
- * @param iterator a function with a single argument which is the current covering square.
- * The function should return a truthy value; if it returns a falsy value, the iteration stops immediately.
- */
-MinSquareCoveringData.prototype.iterateMinimumCovering = function(iterator) {
-	var P = this;   // P is the residual polygon.
-	var maxIterations = Math.max(2*P.corners.length,200);
-	while (!P.isEmpty()) {
-		TRACE("\nP="+P.corners.toString())
-		var knob = P.findSegmentWithContinuator(); // returns the first knob in a continuator.
-		var continuator = knob.getAdjacentSquareInPolygon();
-		TRACE("\tprocessing knob "+knob.toString()+"\twith continuator "+JSON.stringify(continuator))
-		P.removeErasableRegion(knob);
-
-		var balconyOfContinuatorIsCovered = false; // TODO: check whether the balcony is really covered, to avoid redundant squares.!
-		if (!balconyOfContinuatorIsCovered) {
-			var shouldWeContinue = iterator(continuator);
-			if (!shouldWeContinue)
-				break;
-		}
-	
-		maxIterations--;
-		if (maxIterations<=0) 
-			throw new Error("Covering not found after many iterations!");
-	}
-
-}
-
-/**
- * @return a list of squares covering this polygon.
- */
-MinSquareCoveringData.prototype.findMinimumCovering = function() {
-	var covering = [];       // C is the current covering.
-	this.iterateMinimumCovering(function(square) {
-		covering.push(square); 
-		return true;
-	});
-	return covering;
-}
-
-
-
-/**
- * A shorthand function for directly calculating the minimal square covering of a polygon defined by the given xy values.
- * Useful for testing and demonstrations.
- * 
- * @param arg A SimpleRectilinearPolygon
- * @return an array with a minimal square covering of that polygon.
- */
-jsts.algorithm.minSquareCovering = function(arg, factory) {
-	var srp = arg;
-	var srpc = new jsts.algorithm.MinSquareCoveringData(srp);
-	var covering = srpc.findMinimumCovering();
-	if (factory) {
-		return covering.map(function(square) {
-			return factory.createAxisParallelRectangle(square);
-		});
-	} else {
-		return covering;
-	}
-}
-
-}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./DoublyLinkedList":13,"./Side":18,"./SimpleRectilinearPolygon":19,"almost-equal":28,"jsclass/src/linked_list":40}],17:[function(require,module,exports){
-(function (global){
-/**
- * Calculate a largest subset of interior-disjoint representative shapes from given sets of candidates.
- *
- * @author Erel Segal-Halevi
- * @since 2014-03
- */
-
-var Combinatorics = require('js-combinatorics');
-var _ = require('underscore');
-
-var jsts = global.jsts
-require("./intersection-cache");
-require("./partition-utils");
-
-
-/*--- Main Algorithm ---*/
-
-/**
- * Calculate a largest subset of non-intersecting shapes from a given set of candidates.
- * @param candidates a set of shapes (geometries).
- * @param stopAtCount - After finding this number of disjoint shapes, don't look further (default: infinity)
- * @return a subset of these shapes, that are guaranteed to be pairwise disjoint.
- */
-jsts.algorithm.representativeDisjointSet = function(candidateSets) {
-	if (!candidateSets) 	return [];
-
-	candidateSets = candidateSets.filter(function(set){return set.length>0});
-	if (!candidateSets.length) return [];
-
-	candidateSets = candidateSets.map(jsts.algorithm.prepareShapesToPartition);
-
-	var allCandidates = candidateSets.reduce(function(a, b) { return a.concat(b); });
-	jsts.algorithm.prepareDisjointCache(allCandidates);
-
-	var repDisjointSet = representativeDisjointSetSub(candidateSets);
-	if (repDisjointSet) return repDisjointSet;
-
-	// If a set of n representatives is not found, we should return null,
-	//    but for the sake of presentation to users
-	//    we try to find a set of n-1 representatives.
-	//    this is not optimized as this is not the main goal of the algorithm.
-	else return jsts.algorithm.representativeDisjointSet(candidateSets.slice(1));
-}
-
-
-/**
- * Find an interior-disjoint set of representative shapes, from the given set of candidates,
- * or null if not found.
- *
- * @param candidateSets an array of arrays of candidate shapes.
- *
- * @return a set of shapes that do not interior-intersect, or null if not found.
- *
- * @author Erel Segal-Halevi
- * @since 2014-03
- */
-function representativeDisjointSetSub(candidateSets) {
-	var allSets = Combinatorics.cartesianProduct.apply(null,candidateSets);
-	while (subset = allSets.next()) {
-		if (jsts.algorithm.arePairwiseDisjointByCache(subset))
-			return subset;
-	}
-	return null;
-}
-
-}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./intersection-cache":23,"./partition-utils":25,"js-combinatorics":34,"underscore":59}],18:[function(require,module,exports){
-(function (global){
-/**
- * Enums related to sides
- */
-
-var jsts = global.jsts;
-
-/**
- * angle relative to x axis: 90*(3-Side)
- */
-jsts.Side = {
-	South: 0,
-	West: 1,
-	North: 2,
-	East: 3
-};
-
-jsts.sideToLetter = {};
-
-for (var i in jsts.Side)
-	jsts.sideToLetter[jsts.Side[i]] = i[0];
-
-jsts.inverseSide = function(side) {
-	return (side+2)%4;
-}
-
-jsts.isVertical = function(side) { return side%2==0; }
-jsts.isHorizontal = function(side) { return side%2==1; }
-
-jsts.Turn = {
-	Left: -1,
-	Right: 1
-};
-
-
-jsts.turn = function(side1, side2) {
-	var t = side2-side1;
-	if (t>1) t-=4;
-	if (t<-1) t+=4;
-	return t;
-}
-
-jsts.turnDirection = function(turn) {
-	return turn>0? 1: -1;
-}
-
-}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],19:[function(require,module,exports){
-(function (global){
-/**
- * The SimpleRectilinearPolygon class represents a hole-free (simply-connected) rectilinear polygon.
- * Contains special data structures for calculating the minimum square covering.
- * Based on Bar-Yehuda, R. and Ben-Hanoch, E. (1996). A linear-time algorithm for covering simple polygons with similar rectangles. International Journal of Computational Geometry & Applications, 6.01:79-102.
- * 	http://www.citeulike.org/user/erelsegal-halevi/article/12475038
- *
- * @author Erel Segal-Halevi
- * @since 2014-07
- */
-
-
-var jsts = global.jsts;
-
-var round4 = function(x) { return Math.round(x*10000)/10000; }
-
-
-/**
- * Constructs a simply-connected rectilinear polygon.
- *
- * @param xy an array of alternating x and y values.
- * The points of the polygon are: (xy[0],xy[1]), (xy[2],xy[1]), (xy[2],xy[3]), ...
- * @note the first side is always horizontal.
- * @constructor
- */
-var SimpleRectilinearPolygon = jsts.geom.SimpleRectilinearPolygon = function(xy, factory) {
-	if (!Array.isArray(xy))
-		throw new Error("xy should be an array but is "+JSON.stringify(xy));
-	if (xy.length==0)
-		throw new Error("xy is empty: "+JSON.stringify(xy));
-	if (!factory)
-		throw new Error("factory is empty");
-
-	var points;
-	var first = xy[0];
-	if ((typeof first === 'object') && ('x' in first)) {
-		// xy is already an array of points
-		points = xy.map(function(point) {return new jsts.geom.Coordinate(round4(point.x),round4(point.y))});
-		if (points.length<5)
-			throw new Error("only "+points.length+" points: "+JSON.stringify(points));
-		if (points.length%2==0)
-			throw new Error("even number of points: "+JSON.stringify(points));
-
-		if (SimpleRectilinearPolygon.FORCE_FIRST_SEGMENT_HORIZONTAL && points[0].x==points[1].x) {
-			points.shift();
-			points.push(points[0]);
-		}
-
-	} else {
-		xy = xy.map(round4);
-		if (xy.length%2==1)
-			throw new Error("odd number of xy values: "+JSON.stringify(xy));
-		points = [];	// xy is an array of x-y-x-y-x-y-...
-		for (var i=0; i<xy.length; i+=2) {
-			points.push(new jsts.geom.Coordinate (xy[i], xy[i+1]));
-			points.push(new jsts.geom.Coordinate (xy[i+2<xy.length? i+2: 0], xy[i+1]));
-		}
-		points.push(new jsts.geom.Coordinate(xy[0], xy[1]));	// last point is identical to first point
-	}
-	// points = factory.getCoordinateSequenceFactory().create(points);  // JSTS version 1.2.1
-	points = factory.createCoordinates(points);  // JSTS version 0.14.0
-	jsts.geom.LinearRing.call(this, points, factory);  // call parent constructor
-};
-
-jsts.inherits(SimpleRectilinearPolygon,jsts.geom.LinearRing)
-//SimpleRectilinearPolygon.prototype = new jsts.geom.LinearRing(); //Object.create(jsts.geom.LinearRing.prototype);
-//SimpleRectilinearPolygon.constructor = SimpleRectilinearPolygon;
-SimpleRectilinearPolygon.FORCE_FIRST_SEGMENT_HORIZONTAL = true;
-
-
-SimpleRectilinearPolygon.prototype.getPolygon = function() {
-	if (!this.polygon)
-		this.polygon = this.factory.createPolygon(this);
-	return this.polygon;
-}
-
-/**
- * Creates and returns a full copy of this {@link Polygon} object. (including
- * all coordinates contained by it).
- *
- * @return a clone of this instance.
- */
-SimpleRectilinearPolygon.prototype.clone = function() {
-	return new SimpleRectilinearPolygon(this.points, this.factory);
-};
-
-SimpleRectilinearPolygon.prototype.relate2 = function(g) {
-	return this.getPolygon().relate2(g)
-}
-
-/**
- * @return the coordinates of this polygon, in 2-d format
- */
-SimpleRectilinearPolygon.prototype.getCoordinates2D = function() {
-	return this.getCoordinates().map(function(coords) {
-		return {x:coords.x, y:coords.y}
-	});
-}
-
-/**
- * @return {String} String representation of Polygon type.
- */
-SimpleRectilinearPolygon.prototype.toString = function() {
-	return 'SimpleRectilinearPolygon with '+(this.points.length-1)+' corners: '+this.points;
-};
-
-var cornerToKey = function(corner) {
-	return corner.x+","+corner.y;
-}
-
-
-SimpleRectilinearPolygon.prototype.hasCorner = function(corner) {
-	if (!this.hashOfCorners) {
-		this.hashOfCorners = {};
-		this.points.forEach(function(point) {
-			this.hashOfCorners[cornerToKey(point)]=true;
-		}, this);
-	}
-
-	return this.hashOfCorners[cornerToKey(corner)];
-}
-
-SimpleRectilinearPolygon.prototype.pushIfNotMyCorner = function(newPoints, corner) {
-	if (!this.hasCorner(corner))
-		newPoints.push(corner);
-}
-
-
-function isCornerOf(point, rectangle) {
-	return (
-		(point.x==rectangle.minx || point.x==rectangle.maxx) &&
-		(point.y==rectangle.miny || point.y==rectangle.maxy) );
-}
-
-
-/**
- * @author http://engblog.nextdoor.com/post/86430627239/fast-polygon-self-intersection-detection-in-javascript
- */
-SimpleRectilinearPolygon.prototype.selfIntersectionPoints = function() {
-	var jstsPolygon = this.getPolygon();
-	var res = [];
-
-	// if the geometry is aleady a simple linear ring, do not
-	// try to find self intersection points.
-	var validator = new jsts.operation.IsSimpleOp(jstsPolygon);
-	if (validator.isSimpleLinearGeometry(jstsPolygon)) {
-		return [];
-	}
-
-	var graph = new jsts.geomgraph.GeometryGraph(0, jstsPolygon);
-	var cat = new jsts.operation.valid.ConsistentAreaTester(graph);
-	var r = cat.isNodeConsistentArea();
-	if (!r) {
-		var pt = cat.getInvalidPoint();
-		res.push([pt.x, pt.y]);
-	}
-	return res;
-}
-
-
-/**
- * Remove a certain rectangular land-plot from this polygon.
- *
- * @param landplot a rectangle {minx:,maxx:,miny:,maxy:} contained in the polygon and adjacent to the border.
- * @return this SimpleRectilinearPolygon with the landplot removed.
- * (this polygon is not changed).
- */
-SimpleRectilinearPolygon.prototype.removeRectangle = function(landplot) {
-		if (landplot.minx==landplot.maxx || landplot.miny==landplot.maxy) { // empty landplot
-			console.log("\nWARNING: empty landplot: "+JSON.stringify(landplot))
-			return this;
-		}
-		var newPoints = [];
-		var landplotIsAdjacentToBorder = false;  // If this flag remains false, this is an error since the result is not simply-connected.
-
-		var thisPolygon = this;
-
-		var setLandplotAdjacentToBorder = function()  {
-			if (landplotIsAdjacentToBorder) {
-				throw new Error("landplot meets the border more than once - the result will be disconnected!\n\tthis.points="+JSON.stringify(thisPolygon.points)+"\n\tremoveRectangle("+JSON.stringify(landplot)+"):");
-			}
-			landplotIsAdjacentToBorder = true;
-		}
-
-		for (var i=1; i<this.points.length; ++i) {
-			var corner0 = this.points[i-1];
-			var corner1 = this.points[i];
-			var corner0isCornerOfLandplot = isCornerOf(corner0, landplot);
-
-			if (corner0isCornerOfLandplot) {
-				if (newPoints.length>0) {
-					// handle the special case in which landplot covers two adjacent corners:
-					lastCornerAdded = newPoints[newPoints.length-1];
-					if (corner0.x==lastCornerAdded.x&&corner0.y==lastCornerAdded.y)
-						newPoints.pop();
-				}
-				continue;
-			} else {
-				newPoints.push(corner0);
-			}
-
-			if (corner0.x==corner1.x) {  // vertical wall
-				var x = corner0.x;       // x value of wall
-				if (landplot.minx==x) {  // landplot is adjacent to western vertical wall
-					//console.log("\tlandplot is adjacent to western vertical wall");
-					if (corner0.y>corner1.y) {   // wall goes from north to south
-						if (corner0.y>=landplot.miny && landplot.miny>=corner1.y) {
-							setLandplotAdjacentToBorder();
-							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.maxy})
-							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.maxy})
-							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.miny})
-							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.miny})
-						} else if (corner1.y==landplot.maxy) {
-							setLandplotAdjacentToBorder();
-							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.miny})
-							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.miny})
-						}
-					} else if (corner0.y<corner1.y) { // wall goes from south to north
-						if (corner1.y>=landplot.maxy && landplot.maxy>=corner0.y) {
-							setLandplotAdjacentToBorder();
-							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.miny})
-							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.miny})
-							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.maxy})
-							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.maxy})
-						} else if (corner1.y==landplot.miny) {
-							setLandplotAdjacentToBorder();
-							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.maxy})
-							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.maxy})
-						}
-					} else {  // corner0 is identical to corner1 - error:
-						throw new Error("Illegal border - two identical corners: corner0="+JSON.stringify(corner0)+" corner1="+JSON.stringify(corner1));
-					}
-				} else if (landplot.maxx==x) {  // landplot is adjacent to eastern vertical wall
-					//console.log("\tlandplot is adjacent to eastern vertical wall");
-					if (corner0.y>corner1.y) {   // wall goes from north to south
-						if (corner0.y>=landplot.miny && landplot.miny>=corner1.y) {
-							setLandplotAdjacentToBorder();
-							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.maxy})
-							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.maxy})
-							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.miny})
-							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.miny})
-						} else if (corner1.y==landplot.maxy) {
-							setLandplotAdjacentToBorder();
-							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.miny})
-							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.miny})
-						}
-					} else if (corner0.y<corner1.y) { // wall goes from south to north
-						if (corner1.y>=landplot.maxy && landplot.maxy>=corner0.y) {
-							setLandplotAdjacentToBorder();
-							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.miny})
-							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.miny})
-							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.maxy})
-							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.maxy})
-						} else if (corner1.y==landplot.miny) {
-							setLandplotAdjacentToBorder();
-							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.maxy})
-							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.maxy})
-						}
-					} else {  // corner0 is identical to corner1 - error:
-						throw new Error("Illegal border - two identical corners: corner0="+JSON.stringify(corner0)+" corner1="+JSON.stringify(corner1));
-					}
-				} // else, landplot is not adjacent to current wall.
-			} else if (corner0.y==corner1.y) {  // horizontal wall
-				var y = corner0.y;       //  value of wall
-				if (landplot.miny==y) {
-					//console.log("\tlandplot is adjacent to southern horizontal wall")
-					if (corner0.x>corner1.x) {   // wall goes from east to west
-						if (corner0.x>=landplot.minx && landplot.minx>=corner1.x) {
-							setLandplotAdjacentToBorder();
-							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.miny})
-							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.maxy})
-							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.maxy})
-							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.miny})
-						} else if (corner1.x==landplot.maxx) {
-							setLandplotAdjacentToBorder();
-							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.miny})
-							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.maxy})
-						}
-					} else if (corner0.x<corner1.x) { // wall goes from west to east
-						if (corner0.x<=landplot.maxx && landplot.maxx<=corner1.x) {
-							setLandplotAdjacentToBorder();
-							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.miny})
-							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.maxy})
-							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.maxy})
-							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.miny})
-						} else if (corner1.x==landplot.minx) {
-							setLandplotAdjacentToBorder();
-							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.miny})
-							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.maxy})
-						}
-					} else {  // corner0 is identical to corner1 - error:
-						throw new Error("Illegal border - two identical corners: corner0="+JSON.stringify(corner0)+" corner1="+JSON.stringify(corner1));
-					}
-				} else if (landplot.maxy==y) {  // landplot is adjacent to northern horizontal wall
-					//console.log("\tlandplot is adjacent to northern horizontal wall")
-					if (corner0.x>corner1.x) {   // wall goes from east to west
-						if (corner0.x>=landplot.minx && landplot.minx>=corner1.x) {
-							setLandplotAdjacentToBorder();
-							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.maxy})
-							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.miny})
-							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.miny})
-							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.maxy})
-						} else if (corner1.x==landplot.maxx) {
-							setLandplotAdjacentToBorder();
-							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.maxy})
-							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.miny})
-						}
-					} else if (corner0.x<corner1.x) { // wall goes from west to east
-						if (corner0.x<=landplot.maxx && landplot.maxx<=corner1.x) {
-							setLandplotAdjacentToBorder();
-							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.maxy})
-							this.pushIfNotMyCorner(newPoints, {x:landplot.minx,y:landplot.miny})
-							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.miny})
-							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.maxy})
-						} else if (corner1.x==landplot.minx) {
-							setLandplotAdjacentToBorder();
-							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.maxy})
-							this.pushIfNotMyCorner(newPoints, {x:landplot.maxx,y:landplot.miny})
-						}
-					} else {  // corner0 is identical to corner1 - error:
-						throw new Error("Illegal border - two identical corners: corner0="+JSON.stringify(corner0)+" corner1="+JSON.stringify(corner1));
-					}
-				} // else, landplot is not adjacent to current wall
-			} else {   // corner0 and corner1 are different in both coordinates - not an axis-parallel polygon
-				throw new Error("Illegal border - not an axis-parallel polygon: corner0="+JSON.stringify(corner0)+" corner1="+JSON.stringify(corner1));
-			}
-		}
-
-		if (!landplotIsAdjacentToBorder) {
-			throw new Error("Landplot is not adjacent to border - the result is not a simply-connected polygon")
-		}
-
-		// remove redundant corners of the landplot, that overlap corners of the polygon:
-		lastCornerAdded = newPoints[newPoints.length-1];
-		if (corner1.x==lastCornerAdded.x&&corner1.y==lastCornerAdded.y)
-			newPoints.pop();
-		if (this.points[1].x==lastCornerAdded.x && this.points[1].y==lastCornerAdded.y)
-			newPoints.pop();
-
-		// keep the border cyclic:
-		newPoints.push(newPoints[0]);
-
-		var newPolygon = this.factory.createSimpleRectilinearPolygon(newPoints);
-
-		// check validity of new polygon:
-		var newPolygonIntersectionPoints = newPolygon.selfIntersectionPoints();
-		if (newPolygonIntersectionPoints.length>0) {
-			console.dir("this.points="+JSON.stringify(this.points));
-			console.dir("removeRectangle("+JSON.stringify(landplot)+") returns:");
-			console.dir(JSON.stringify(newPolygon.points));
-			throw new Error("New polygon has self-intersections at: "+JSON.stringify(newPolygonIntersectionPoints));
-		}
-
-		return newPolygon;
-}
-
-
-SimpleRectilinearPolygon.prototype.CLASS_NAME = 'SimpleRectilinearPolygon';
-
-/**
- * Constructs a simply-connected rectilinear polygon.
- *
- * @param xy an array of alternating x and y values.
- * The points of the polygon are: (xy[0],xy[1]), (xy[2],xy[1]), (xy[2],xy[3]), ...
- * @note the first side is always horizontal.
- */
-jsts.geom.GeometryFactory.prototype.createSimpleRectilinearPolygon = function(xy) {
-	return new SimpleRectilinearPolygon(xy, this);
-};
-
-}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],20:[function(require,module,exports){
-(function (global){
-/**
- * Calculate a square containing a maximal number of points.
- *
- * @author Erel Segal-Halevi
- * @since 2014-04
- *
- * REVIEWED AND CORRECTED BY:
- * * Flambino
- * * abuzittin gillifirca
- * http://codereview.stackexchange.com/questions/46531/reducing-code-duplication-in-a-geometric-function
- */
-
-var jsts = global.jsts;
-var utils = require('./numeric-utils');
-var _ = require("underscore");
-
-/**
- * @param points array of points, e.g. [{x:0,y:0}, {x:100,y:100}, etc.]
- * @param envelope defines the bounding rectangle, e.g. {minx: 0, maxx: 100, miny: 0, maxy: 200}
- * @param maxAspectRatio number>=1: the maximum width/height ratio of the returned rectangle.
- * @return a rectangle contained within the envelope, with aspect ratio at most maxAspectRatio, that contains a largest number of points.
- */
-jsts.algorithm.squareWithMaxNumOfPoints = function(points, envelope, maxAspectRatio) {
-	if (!maxAspectRatio) maxAspectRatio=1;
-	var width = envelope.maxx-envelope.minx;
-	var height = envelope.maxy-envelope.miny;
-	var largestWidthPerHeight = maxAspectRatio*height;
-	var largestHeightPerWidth = maxAspectRatio*width;
-	var result = {};
-	points = jsts.algorithm.pointsInEnvelope(points, envelope);
-	//console.dir(envelope)
-	//console.log(width+" "+largestWidthPerHeight+" "+height+" "+largestHeightPerWidth)
-	if (width<=largestWidthPerHeight && height<=largestHeightPerWidth) {
-		// the envelope has aspect ratio at most maxAspectRatio, so just return it entirely:
-		result = {minx:envelope.minx, maxx:envelope.maxx, miny:envelope.miny, maxy:envelope.maxy};
-	} else if (width>largestWidthPerHeight) {
-		var miny = result.miny = envelope.miny;
-		var maxy = result.maxy = envelope.maxy;
-		var xValues = utils.sortedUniqueValues(points, ["x"]);
-		if (xValues.length==0) {  // no x values in the envelope - just return any rectangle within the envelope
-			result.minx = envelope.minx;
-			result.maxx = result.minx+largestWidthPerHeight;
-		} else {
-			var maxNum   = 0;
-			for (var i=0; i<xValues.length; ++i) {
-				var minx = Math.min(xValues[i], envelope.maxx-largestWidthPerHeight);
-				var maxx = minx+largestWidthPerHeight;
-				var curNum = jsts.algorithm.numPointsInXY(points, minx,miny,maxx,maxy);
-				if (curNum>maxNum) {
-					maxNum = curNum;
-					result.minx = minx;
-					result.maxx = maxx;
-				}
-			}
-		}
-	} else {  // height>largestHeightPerWidth
-		var minx = result.minx = envelope.minx;
-		var maxx = result.maxx = envelope.maxx;
-		var yValues = utils.sortedUniqueValues(points, ["y"]);
-		if (yValues.length==0) {  // no y values in the envelope - just return any rectangle within the envelope
-			result.miny = envelope.miny;
-			result.maxy = result.miny+largestHeightPerWidth;
-		} else {
-			var maxNum   = 0;
-			for (var i=0; i<yValues.length; ++i) {
-				var miny = Math.min(yValues[i], envelope.maxy-largestHeightPerWidth);
-				var maxy = miny+largestHeightPerWidth;
-				var curNum = jsts.algorithm.numPointsInXY(points, minx,miny,maxx,maxy);
-				if (curNum>maxNum) {
-					maxNum = curNum;
-					result.miny = miny;
-					result.maxy = maxy;
-				}
-			}
-		}
-	}
-	return result;
-}
-
-}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./numeric-utils":24,"underscore":59}],21:[function(require,module,exports){
-(function (global){
-/**
- * Adds to jsts.geom.GeometryFactory some simple utility functions related to points.
- * @author Erel Segal-Halevi
- * @since 2014-03
- */
-
-var jsts = global.jsts
-
-function coord(x,y)  {  return new jsts.geom.Coordinate(x,y); }
-
-/**
- * Constructs an array of <code>Coordinate</code>s from a given array of {x,y} values.
- */
-jsts.geom.GeometryFactory.prototype.createCoordinates = function(xy) {
-	return xy.map(function(point) {
-		return coord(point.x, point.y);
-	}, this);
-};
-
-
-var oldCreatePoint = jsts.geom.GeometryFactory.prototype.createPoint;
-
-
-/**
- * Constructs a point from x and y values.
- */
-jsts.geom.GeometryFactory.prototype.createPointFromXY = function(x,y) {
-	//console.log(x)
-	if (!isNaN(x) && !isNaN(y))
-		return oldCreatePoint.call(this, coord(x,y));
-	else if (!isNaN(x.x) && !isNaN(x.y))
-		return oldCreatePoint.call(this, coord(x.x, x.y));
-	else if (x instanceof jsts.geom.Coordinate)
-		return oldCreatePoint.call(this, x);
-	else
-		throw new Error("Illegal arguments to createPoint: "+JSON.stringify(x)+", "+JSON.stringify(y))
-};
-
-
-/**
- * Constructs a point from x and y values.
- *
-jsts.geom.GeometryFactory.prototype.createPoint = 
-//jsts.geom.GeometryFactory.prototype.createPointFromXY
-function(x,y) {
-	console.log(x)
-	if (!isNaN(x) && !isNaN(y))
-		return oldCreatePoint.call(this, coord(x,y));
-	else if (!isNaN(x.x) && !isNaN(x.y))
-		return oldCreatePoint.call(this, coord(x.x, x.y));
-	else if (x instanceof jsts.geom.Coordinate)
-		return oldCreatePoint.call(this, x);
-	else
-		throw new Error("Illegal arguments to createPoint: "+JSON.stringify(x)+", "+JSON.stringify(y))
-};
-*/
-
-/**
- * Constructs an array of <code>Point</code>s from a given array of {x,y} points.
- */
-jsts.geom.GeometryFactory.prototype.createPoints = function(xy) {
-	//console.dir(xy);
-	return xy.map(function(point) {
-		return 	this.createPointFromXY(point);
-	}, this);
-};
-
-
-}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],22:[function(require,module,exports){
+},{"./ValueFunction":13,"./corners":14,"./numeric-utils":20,"./rainbow":23,"./rectilinear-polygon-division":24,"argminmax":28,"underscore":58,"util":65}],18:[function(require,module,exports){
 (function (global){
 var jsts = global.jsts =  Object.assign({}, require("jsts"));  // see http://stackoverflow.com/q/38827153/827927
 jsts.algorithm = Object.assign({}, global.jsts.algorithm);
@@ -4200,6 +4124,12 @@ require("./MaxDisjointSetAsync");
 require("./RepresentativeDisjointSetSync");
 
 require("./SquareWithMaxPoints");
+require("./SquareWithGivenNumOfPoints");
+
+require("./fair-and-square-division");
+require("./half-proportional-division-staircase");
+require("./rectilinear-polygon-division");
+require("./test-division-algorithm")
 
 jsts.stringify = function(object) {
 	if (object instanceof Array) {
@@ -4212,7 +4142,7 @@ jsts.stringify = function(object) {
 module.exports = jsts;
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./AffineTransformations":11,"./AxisParallelRectangle":12,"./MaxDisjointSetAsync":14,"./MaxDisjointSetSync":15,"./MinSquareCovering":16,"./RepresentativeDisjointSetSync":17,"./Side":18,"./SimpleRectilinearPolygon":19,"./SquareWithMaxPoints":20,"./factory-utils":21,"./intersection-cache":23,"./numeric-utils":24,"./partition-utils":25,"./point-utils":26,"./shapes-touching-points":27,"jsts":44}],23:[function(require,module,exports){
+},{"./AffineTransformations":2,"./AxisParallelRectangle":3,"./MaxDisjointSetAsync":5,"./MaxDisjointSetSync":6,"./MinSquareCovering":7,"./RepresentativeDisjointSetSync":8,"./Side":9,"./SimpleRectilinearPolygon":10,"./SquareWithGivenNumOfPoints":11,"./SquareWithMaxPoints":12,"./factory-utils":15,"./fair-and-square-division":16,"./half-proportional-division-staircase":17,"./intersection-cache":19,"./numeric-utils":20,"./partition-utils":21,"./point-utils":22,"./rectilinear-polygon-division":24,"./shapes-touching-points":25,"./test-division-algorithm":26,"jsts":43}],19:[function(require,module,exports){
 (function (global){
 /**
  * Create the interiorDisjoint relation, and a cache for keeping previous results of this relation.
@@ -4308,7 +4238,7 @@ jsts.algorithm.calcDisjointByCache = function(shapes, referenceShapes) {
 
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],24:[function(require,module,exports){
+},{}],20:[function(require,module,exports){
 /**
  * Some utils for structs of numbers.
  * 
@@ -4380,7 +4310,7 @@ module.exports = {
 	},
 }
 
-},{}],25:[function(require,module,exports){
+},{}],21:[function(require,module,exports){
 (function (global){
 /**
  * Adds to jsts.algorithm some utility functions related to partitioning collections of shapes.
@@ -4530,7 +4460,7 @@ function partitionDescription(partition) {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./numeric-utils":24,"underscore":59}],26:[function(require,module,exports){
+},{"./numeric-utils":20,"underscore":58}],22:[function(require,module,exports){
 (function (global){
 /**
  * Adds to jsts.algorithm some utility functions related to collections of points.
@@ -4594,7 +4524,203 @@ jsts.algorithm.agentsValuePointsToString = function(agentsValuePoints) {
 
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"underscore":59}],27:[function(require,module,exports){
+},{"underscore":58}],23:[function(require,module,exports){
+/**
+ * Add a color field to a list of objects.
+ *
+ * @author Erel Segal-Halevi
+ * @since 2014-04
+ */
+
+var _ = require("underscore");
+
+var colors = ['#000','#f00','#0f0','#ff0','#088','#808','#880'];
+var color = function(i) {return colors[i % colors.length]};
+
+module.exports = {
+	color: color,
+
+	/**
+	 * Duplicate a given object a given number of times, adding a "color" field to each copy.
+	 *
+	 * @param object
+	 * @param count
+	 * @return an array with objects similar to "object" but with an added color field.
+	 */
+	rainbowDuplicate: function(object,count) {
+		var rainbow = [];
+		for (var i=0; i<count; ++i) {
+			var newObject = _.clone(object);
+			newObject.color = color(i);
+			rainbow.push(newObject);
+		}
+		return rainbow;
+	}
+};
+
+},{"underscore":58}],24:[function(require,module,exports){
+(function (global){
+/**
+ * Fairly cut a SimpleRectilinearPolygon such that each agent receives a square.
+ *
+ * @author Erel Segal-Halevi
+ * @since 2014-09
+ */
+
+var jsts = global.jsts
+var SimpleRectilinearPolygon = jsts.geom.SimpleRectilinearPolygon;
+var ValueFunction = require("./ValueFunction");
+var _ = require("underscore");
+_.mixin(require("argminmax"));
+var util = require("util");
+
+function logValueFunctions(valueFunctions) {
+	console.log(util.inspect(valueFunctions,{depth:3}));
+}
+
+function TRACE (numOfAgents, s) {
+//	console.log(Array(Math.max(0,6-numOfAgents)).join("   ")+s);
+};
+
+function TRACE_NO_LANDPLOT(valueFunctions) {
+//	logValueFunctions(valueFunctions);
+}
+
+function TRACE_PARTITION(numOfAgents, s, y, k, northAgents, northPlots, southAgents, southPlots) {
+	TRACE(numOfAgents,s+"(k="+k+", y="+round2(y)+"): "+southAgents.length+" south agents ("+_.pluck(southAgents,"color")+") got "+southPlots.length+" plots and "+northAgents.length+" north agents ("+_.pluck(northAgents,"color")+") got "+northPlots.length+" plots.");
+}
+
+
+/**
+ * @param knob a knob which is first in a knob-chain of a continuator.
+ * @param valueFunctions the candidate squares will be inserted in the valueFunction.candidateSquares array.
+ * @param cornerFilterFunction used to filter the corners.
+ * @return numOfCandidatesPerKnob total number of candidates for the given knob.
+ */
+function findCandidateSquaresInKnob(knob, valueFunctions, requiredLandplotValue, cornerFilterFunction) {
+	var corner = knob.c0;
+	var cornerCount = Math.min(4,knob.knobCount+1);
+	var knobLength = knob.length();
+	var numOfCandidatesPerKnob = 0;
+	for (var i=0; i<cornerCount; ++i) {   // loop over all (convex) corners of the continuator:
+		if (!cornerFilterFunction || cornerFilterFunction(corner)) {
+			var directionOfPolygonInterior = corner.directionOfPolygonInterior();
+			valueFunctions.forEach(function(valueFunction) {
+				var squareSize = valueFunction.sizeOfSquareWithValue(corner, requiredLandplotValue, directionOfPolygonInterior);
+				if (squareSize<=knobLength) {
+					var x0 = corner.x
+					  , x1 = corner.x + corner.signOfPolygonInteriorX()*squareSize
+					  , y0 = corner.y
+					  , y1 = corner.y + corner.signOfPolygonInteriorY()*squareSize;
+					numOfCandidatesPerKnob++;
+					if (valueFunction.candidateSquares)
+						valueFunction.candidateSquares.push({minx:Math.min(x0,x1), miny:Math.min(y0,y1), maxx:Math.max(x0,x1), maxy:Math.max(y0,y1), size:squareSize, corner:{x:corner.x,y:corner.y}, direction:directionOfPolygonInterior});
+				}
+			});
+		}
+		corner = corner.next;
+	};
+	return numOfCandidatesPerKnob;
+}
+
+
+/**
+ * @param agentsValuePoints an array of n>=1 or more valuation functions, represented by value points (x,y).
+ * @param cake a SimpleRectilinearPolygon representing the cake to divide.
+ * @return an array of n squares (minx,maxx,miny,maxy) representing the shares of the n agents.
+ */
+jsts.algorithm.rectilinearPolygonDivision = function recursive(valueFunctions, cake, requiredLandplotValue) {
+	var numOfAgents = valueFunctions.length;
+	TRACE(numOfAgents,numOfAgents+" agents("+_.pluck(valueFunctions,"color")+"), trying to give each a value of "+requiredLandplotValue+" from a cake "+cake.toString());
+	var USE_FLOATING_CORNERS = false;
+	var cakeCoveringData = new jsts.algorithm.MinSquareCoveringData(cake);
+
+	// Start by removing knobs that nobody wants:
+	var cakeHasChanged = false;
+	for (;;) {
+		var cakeHasChangedInIteration = false;
+		var knobs = cakeCoveringData.findAllSegmentsWithContinuators();
+		for (var i=0; i<knobs.length; ++i) {
+			var knob = knobs[i];
+			TRACE(numOfAgents,"\tchecking knob "+knob.toString());
+			var numOfCandidatesPerKnob = findCandidateSquaresInKnob(knob, valueFunctions, requiredLandplotValue);
+			if (!numOfCandidatesPerKnob) {
+				TRACE(numOfAgents,"\t-- No demand - removing knob");
+				cakeCoveringData.removeErasableRegion(knob);
+				cakeHasChangedInIteration = cakeHasChanged = true;
+				break;
+			}
+		}
+		if (cakeCoveringData.isEmpty())
+			break;
+		if (!cakeHasChangedInIteration)  // no knob was removed - proceed to division
+			break;
+	}
+
+	if (cakeCoveringData.isEmpty()) { // no more rectangles
+		TRACE(numOfAgents, "-- no knob with the required value "+requiredLandplotValue);
+		if (requiredLandplotValue<=1)
+			TRACE_NO_LANDPLOT(valueFunctions);
+		return [];
+	}
+
+	if (cakeHasChanged)
+		cake = cakeCoveringData.getResidualPolygon();
+	var originalCakeCoveringData = new jsts.algorithm.MinSquareCoveringData(cake);
+
+	valueFunctions.forEach(function(valueFunction) {
+		valueFunction.candidateSquares = [];
+	});
+
+	while (!cakeCoveringData.isEmpty()) {
+		var knob = cakeCoveringData.findSegmentWithContinuator();
+		TRACE(numOfAgents,"\tprocessing knob "+knob.toString());
+
+		var numOfCandidatesPerKnob = findCandidateSquaresInKnob(knob, valueFunctions, requiredLandplotValue,
+			/* corner filter = */USE_FLOATING_CORNERS? null: function(corner) {	return originalCakeCoveringData.hasConvexCorner({x:corner.x,y:corner.y});}
+		);
+
+		cakeCoveringData.removeErasableRegion(knob);
+		TRACE(numOfAgents,"\t ++ found "+numOfCandidatesPerKnob+" candidates")
+	}
+
+	valueFunctions.forEach(function(valueFunction) {
+		valueFunction.square = _.min(valueFunction.candidateSquares, function(square){
+			return square.size
+		});
+	});
+
+	// get the agent with the square with the smallest height overall:
+	var iWinningAgent = _.argmin(valueFunctions, function(valueFunction) {
+		return valueFunction.square.size;
+	});
+
+	var winningAgent = valueFunctions[iWinningAgent];
+	var winningSquare = winningAgent.square;
+
+	if (!winningSquare || !isFinite(winningSquare.size)) {
+		TRACE(numOfAgents, "-- no square with the required value "+requiredLandplotValue);
+		if (requiredLandplotValue<=1)
+			TRACE_NO_LANDPLOT(valueFunctions);
+		return [];
+	}
+
+	var landplot = winningSquare;
+	if (winningAgent.color) landplot.color = winningAgent.color;
+	TRACE(numOfAgents, "++ agent "+iWinningAgent+" gets the landplot "+JSON.stringify(landplot));
+
+	if (valueFunctions.length==1)
+		return [landplot];
+
+	var remainingValueFunctions = valueFunctions.slice(0,iWinningAgent).concat(valueFunctions.slice(iWinningAgent+1,valueFunctions.length));
+	var remainingCake = cake.removeRectangle(landplot);
+	var remainingLandplots = recursive(remainingValueFunctions, remainingCake, requiredLandplotValue);
+	remainingLandplots.push(landplot);
+	return remainingLandplots;
+}
+
+}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{"./ValueFunction":13,"argminmax":28,"underscore":58,"util":65}],25:[function(require,module,exports){
 (function (global){
 /**
  * Find a set of candidate shapes based on a given set of points.
@@ -4810,7 +4936,58 @@ function colorByGroupId(shapes) {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./AxisParallelRectangle":12,"./factory-utils":21}],28:[function(require,module,exports){
+},{"./AxisParallelRectangle":3,"./factory-utils":15}],26:[function(require,module,exports){
+(function (global){
+/**
+ * Divide a cake such that each color gets a square with 1/2n of its points.
+ *
+ * @author Erel Segal-Halevi
+ * @since 2014-04
+ */
+
+var jsts = global.jsts
+var ValueFunction = require("./ValueFunction");
+
+var _ = require("underscore");
+_.mixin(require("argminmax"));
+
+var util = require("util");
+var ValueFunction = require("./ValueFunction");
+
+/**
+ * Test the given algorithm with the given args (array) and make sure that every agent gets the required num of points.
+ *
+ * @param algorithm a cake-cutting algorithm.
+ * @param args [array] the arguments with which to call the algorithm. The first argument must be the agentsValuePoints.
+ * @param requiredNum [int] number of points that should be in the landplot of every agent.
+ *
+ * @return the landplots (the result of the division algorithm)
+ */
+jsts.algorithm.testDivisionAlgorithm = function(algorithm, args, requiredNum)  {
+	var landplots = algorithm.apply(0, args);
+	var agentsValuePoints = args[0];
+
+	if (landplots.length<agentsValuePoints.length) {
+		console.error(jsts.algorithm.agentsValuePointsToString(agentsValuePoints));
+		throw new Error("Not enough land-plots: "+JSON.stringify(landplots));
+	}
+	agentsValuePoints.forEach(function(points) {
+		if (points instanceof ValueFunction)
+			points = points.points;
+		landplots.forEach(function(landplot) {
+			if (points.color == landplot.color) {
+				var pointsInLandplot = jsts.algorithm.numPointsInEnvelope(points, landplot);
+				if (pointsInLandplot<requiredNum) {
+					throw new Error("Not enough points for "+landplot.color+": expected "+requiredNum+" but found only "+pointsInLandplot+" from "+JSON.stringify(points)+" in landplot "+JSON.stringify(landplot));
+				}
+			}
+		})
+	})
+	return landplots;
+ }
+
+}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{"./ValueFunction":13,"argminmax":28,"underscore":58,"util":65}],27:[function(require,module,exports){
 "use strict"
 
 var abs = Math.abs
@@ -4836,7 +5013,7 @@ almostEqual.DBL_EPSILON = 2.2204460492503131e-16
 
 module.exports = almostEqual
 
-},{}],29:[function(require,module,exports){
+},{}],28:[function(require,module,exports){
 var _ = require("underscore");
 
   // Internal function: creates a callback bound to its context if supplied
@@ -4911,7 +5088,7 @@ module.exports = {
 
 
 
-},{"underscore":59}],30:[function(require,module,exports){
+},{"underscore":58}],29:[function(require,module,exports){
 "use strict";
 
 // rawAsap provides everything we need except exception management.
@@ -4979,7 +5156,7 @@ RawTask.prototype.call = function () {
     }
 };
 
-},{"./raw":31}],31:[function(require,module,exports){
+},{"./raw":30}],30:[function(require,module,exports){
 (function (global){
 "use strict";
 
@@ -5203,7 +5380,7 @@ rawAsap.makeRequestCallFromTimer = makeRequestCallFromTimer;
 // https://github.com/tildeio/rsvp.js/blob/cddf7232546a9cf858524b75cde6f9edf72620a7/lib/rsvp/asap.js
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],32:[function(require,module,exports){
+},{}],31:[function(require,module,exports){
 (function (process,global){
 (function (global, factory) {
     typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports) :
@@ -10421,7 +10598,7 @@ rawAsap.makeRequestCallFromTimer = makeRequestCallFromTimer;
 
 }));
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"_process":63}],33:[function(require,module,exports){
+},{"_process":62}],32:[function(require,module,exports){
 /*
   javascript.util is a port of selected parts of java.util to JavaScript which
   main purpose is to ease porting Java code to JavaScript.
@@ -10481,7 +10658,7 @@ return true;};HashSet.prototype.remove=function(o){throw new OperationNotSupport
 return array;};HashSet.prototype.iterator=function(){return new HashSet.Iterator(this);};HashSet.Iterator=function(hashSet){this.hashSet=hashSet;};HashSet.Iterator.prototype.hashSet=null;HashSet.Iterator.prototype.position=0;HashSet.Iterator.prototype.next=function(){if(this.position===this.hashSet.size()){throw new NoSuchElementException();}
 return this.hashSet.array[this.position++];};HashSet.Iterator.prototype.hasNext=function(){if(this.position<this.hashSet.size()){return true;}
 return false;};HashSet.Iterator.prototype.remove=function(){throw new javascript.util.OperationNotSupported();};javascript.util.HashSet=HashSet;})();
-},{}],34:[function(require,module,exports){
+},{}],33:[function(require,module,exports){
 /*
  * $Id: combinatorics.js,v 0.25 2013/03/11 15:42:14 dankogai Exp dankogai $
  *
@@ -11009,7 +11186,7 @@ return false;};HashSet.Iterator.prototype.remove=function(){throw new javascript
     return Combinatorics;
 }));
 
-},{}],35:[function(require,module,exports){
+},{}],34:[function(require,module,exports){
 (function(factory) {
   var E  = (typeof exports === 'object'),
       js = (typeof JS === 'undefined') ? require('./core') : JS;
@@ -11060,7 +11237,7 @@ var Comparable = new JS.Module('Comparable', {
 
 exports.Comparable = Comparable;
 });
-},{"./core":37}],36:[function(require,module,exports){
+},{"./core":36}],35:[function(require,module,exports){
 (function (process){
 (function(factory) {
   var E  = (typeof exports === 'object'),
@@ -11624,7 +11801,7 @@ Console.extend(Console);
 exports.Console = Console;
 });
 }).call(this,require('_process'))
-},{"./core":37,"./enumerable":38,"_process":63,"system":51,"tty":64}],37:[function(require,module,exports){
+},{"./core":36,"./enumerable":37,"_process":62,"system":50,"tty":63}],36:[function(require,module,exports){
 var JS = (typeof this.JS === 'undefined') ? {} : this.JS;
 
 (function(factory) {
@@ -12337,7 +12514,7 @@ JS.Singleton = new JS.Class('Singleton', {
 JS.extend(exports, JS);
 if (global.JS) JS.extend(global.JS, JS);
 });
-},{"./loader":41,"./stack_trace":43}],38:[function(require,module,exports){
+},{"./loader":40,"./stack_trace":42}],37:[function(require,module,exports){
 (function(factory) {
   var E  = (typeof exports === 'object'),
       js = (typeof JS === 'undefined') ? require('./core') : JS;
@@ -12953,7 +13130,7 @@ JS.Kernel.alias({toEnum: 'enumFor'});
 
 exports.Enumerable = Enumerable;
 });
-},{"./core":37,"./hash":39}],39:[function(require,module,exports){
+},{"./core":36,"./hash":38}],38:[function(require,module,exports){
 (function(factory) {
   var E  = (typeof exports === 'object'),
       js = (typeof JS === 'undefined') ? require('./core') : JS,
@@ -13389,7 +13566,7 @@ var OrderedHash = new JS.Class('OrderedHash', Hash, {
 exports.Hash = Hash;
 exports.OrderedHash = OrderedHash;
 });
-},{"./comparable":35,"./core":37,"./enumerable":38}],40:[function(require,module,exports){
+},{"./comparable":34,"./core":36,"./enumerable":37}],39:[function(require,module,exports){
 (function(factory) {
   var E  = (typeof exports === 'object'),
       js = (typeof JS === 'undefined') ? require('./core') : JS,
@@ -13519,7 +13696,7 @@ LinkedList.Doubly.Circular = new JS.Class('LinkedList.Doubly.Circular', LinkedLi
 
 exports.LinkedList = LinkedList;
 });
-},{"./core":37,"./enumerable":38}],41:[function(require,module,exports){
+},{"./core":36,"./enumerable":37}],40:[function(require,module,exports){
 (function (process){
 var JS = (typeof this.JS === 'undefined') ? {} : this.JS;
 JS.Date = Date;
@@ -14376,7 +14553,7 @@ P.packages(function() { with(this) {
 
 })();
 }).call(this,require('_process'))
-},{"_process":63,"path":62}],42:[function(require,module,exports){
+},{"_process":62,"path":61}],41:[function(require,module,exports){
 (function(factory) {
   var E  = (typeof exports === 'object'),
       js = (typeof JS === 'undefined') ? require('./core') : JS;
@@ -14445,7 +14622,7 @@ Observable.alias({
 
 exports.Observable = Observable;
 });
-},{"./core":37}],43:[function(require,module,exports){
+},{"./core":36}],42:[function(require,module,exports){
 (function(factory) {
   var E  = (typeof exports === 'object'),
       js = (typeof JS === 'undefined') ? require('./core') : JS,
@@ -14640,7 +14817,7 @@ StackTrace.addObserver(StackTrace.logger);
 
 exports.StackTrace = StackTrace;
 });
-},{"./console":36,"./core":37,"./enumerable":38,"./observable":42}],44:[function(require,module,exports){
+},{"./console":35,"./core":36,"./enumerable":37,"./observable":41}],43:[function(require,module,exports){
 (function (global){
 'use strict';
 global.javascript = {};
@@ -14649,7 +14826,7 @@ var jsts = require('./lib/jsts');
 module.exports = jsts
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./lib/jsts":45,"javascript.util":33}],45:[function(require,module,exports){
+},{"./lib/jsts":44,"javascript.util":32}],44:[function(require,module,exports){
 /* The JSTS Topology Suite is a collection of JavaScript classes that
 implement the fundamental operations required to validate a given
 geo-spatial data set to a known topological specification.
@@ -16360,7 +16537,7 @@ return true;if(this.isBoundaryPoint(li,bdyNodes[1]))
 return true;return false;}else{for(var i=bdyNodes.iterator();i.hasNext();){var node=i.next();var pt=node.getCoordinate();if(li.isIntersection(pt))
 return true;}
 return false;}};})();
-},{}],46:[function(require,module,exports){
+},{}],45:[function(require,module,exports){
 "use strict";
 
 var Iteration = require("./iteration");
@@ -16385,7 +16562,7 @@ ArrayIterator.prototype.next = function () {
 };
 
 
-},{"./iteration":47}],47:[function(require,module,exports){
+},{"./iteration":46}],46:[function(require,module,exports){
 "use strict";
 
 module.exports = Iteration;
@@ -16405,7 +16582,7 @@ Iteration.prototype.equals = function (other) {
 };
 
 
-},{}],48:[function(require,module,exports){
+},{}],47:[function(require,module,exports){
 "use strict";
 
 var Iteration = require("./iteration");
@@ -16427,7 +16604,7 @@ ObjectIterator.prototype.next = function () {
 };
 
 
-},{"./array-iterator":46,"./iteration":47}],49:[function(require,module,exports){
+},{"./array-iterator":45,"./iteration":46}],48:[function(require,module,exports){
 "use strict";
 
 var ArrayIterator = require("./array-iterator");
@@ -16451,7 +16628,7 @@ function iterate(iterable, start, stop, step) {
 }
 
 
-},{"./array-iterator":46,"./object-iterator":48}],50:[function(require,module,exports){
+},{"./array-iterator":45,"./object-iterator":47}],49:[function(require,module,exports){
 (function (process){
 /* vim:ts=4:sts=4:sw=4: */
 /*!
@@ -18257,7 +18434,7 @@ var qEndingLine = captureLine();
 
 
 }).call(this,require('_process'))
-},{"_process":63,"asap":30,"pop-iterate":49,"weak-map":60}],51:[function(require,module,exports){
+},{"_process":62,"asap":29,"pop-iterate":48,"weak-map":59}],50:[function(require,module,exports){
 "use strict";
 
 var Q = require("q");
@@ -18324,7 +18501,7 @@ function xhrSuccess(req) {
 }
 
 
-},{"./common-system":53,"q":50}],52:[function(require,module,exports){
+},{"./common-system":52,"q":49}],51:[function(require,module,exports){
 // This is the browser implementation for "url",
 // redirected from "url" within this package by the
 // loader because of the "browser" redirects in package.json.
@@ -18377,7 +18554,7 @@ exports.resolve = function resolve(base, relative) {
     return resolved;
 };
 
-},{}],53:[function(require,module,exports){
+},{}],52:[function(require,module,exports){
 "use strict";
 
 var Q = require("q");
@@ -19067,7 +19244,7 @@ System.prototype.inspect = function () {
     return {type: "system", location: self.location};
 };
 
-},{"./compile":54,"./identifier":55,"./module":56,"./parse-dependencies":57,"./resource":58,"./url":52,"q":50}],54:[function(require,module,exports){
+},{"./compile":53,"./identifier":54,"./module":55,"./parse-dependencies":56,"./resource":57,"./url":51,"q":49}],53:[function(require,module,exports){
 (function (global){
 "use strict";
 
@@ -19118,7 +19295,7 @@ function compile(module) {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],55:[function(require,module,exports){
+},{}],54:[function(require,module,exports){
 "use strict";
 
 exports.isAbsolute = isAbsolute;
@@ -19201,7 +19378,7 @@ function resolve(rel, abs) {
     return target.join("/");
 }
 
-},{}],56:[function(require,module,exports){
+},{}],55:[function(require,module,exports){
 "use strict";
 
 module.exports = Module;
@@ -19224,7 +19401,7 @@ function Module() {
     this.bundled = false;
 }
 
-},{}],57:[function(require,module,exports){
+},{}],56:[function(require,module,exports){
 "use strict";
 
 module.exports = parseDependencies;
@@ -19236,7 +19413,7 @@ function parseDependencies(text) {
     return Object.keys(dependsUpon);
 }
 
-},{}],58:[function(require,module,exports){
+},{}],57:[function(require,module,exports){
 "use strict";
 
 module.exports = Resource;
@@ -19250,7 +19427,7 @@ function Resource() {
     this.system = null;
 }
 
-},{}],59:[function(require,module,exports){
+},{}],58:[function(require,module,exports){
 //     Underscore.js 1.8.3
 //     http://underscorejs.org
 //     (c) 2009-2015 Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
@@ -20800,7 +20977,7 @@ function Resource() {
   }
 }.call(this));
 
-},{}],60:[function(require,module,exports){
+},{}],59:[function(require,module,exports){
 // Copyright (C) 2011 Google Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -21487,7 +21664,7 @@ function Resource() {
   }
 })();
 
-},{}],61:[function(require,module,exports){
+},{}],60:[function(require,module,exports){
 if (typeof Object.create === 'function') {
   // implementation from standard node.js 'util' module
   module.exports = function inherits(ctor, superCtor) {
@@ -21512,7 +21689,7 @@ if (typeof Object.create === 'function') {
   }
 }
 
-},{}],62:[function(require,module,exports){
+},{}],61:[function(require,module,exports){
 (function (process){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -21740,7 +21917,7 @@ var substr = 'ab'.substr(-1) === 'b'
 ;
 
 }).call(this,require('_process'))
-},{"_process":63}],63:[function(require,module,exports){
+},{"_process":62}],62:[function(require,module,exports){
 // shim for using process in browser
 var process = module.exports = {};
 
@@ -21874,7 +22051,7 @@ process.chdir = function (dir) {
 };
 process.umask = function() { return 0; };
 
-},{}],64:[function(require,module,exports){
+},{}],63:[function(require,module,exports){
 exports.isatty = function () { return false; };
 
 function ReadStream() {
@@ -21887,14 +22064,14 @@ function WriteStream() {
 }
 exports.WriteStream = WriteStream;
 
-},{}],65:[function(require,module,exports){
+},{}],64:[function(require,module,exports){
 module.exports = function isBuffer(arg) {
   return arg && typeof arg === 'object'
     && typeof arg.copy === 'function'
     && typeof arg.fill === 'function'
     && typeof arg.readUInt8 === 'function';
 }
-},{}],66:[function(require,module,exports){
+},{}],65:[function(require,module,exports){
 (function (process,global){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -22484,4 +22661,4 @@ function hasOwnProperty(obj, prop) {
 }
 
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./support/isBuffer":65,"_process":63,"inherits":61}]},{},[1]);
+},{"./support/isBuffer":64,"_process":62,"inherits":60}]},{},[1]);

@@ -114,7 +114,7 @@ var drawFairDivision = function() {
 	var numOfAgents = inputPointsPerAgent.length
 
 
-	var fairDivision = numOfAgents<=2?
+	var fairDivision = numOfAgents<=2 && numOfWalls()==4?
 		window.calcFairAndSquareDivision(inputPointsPerAgent, envelopeFromWalls(), maxSlimness):
 		window.calcHalfProportionalDivision(inputPointsPerAgent, envelopeFromWalls(), maxSlimness);
 
